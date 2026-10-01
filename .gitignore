@@ -1,0 +1,14 @@
+# Datos confidenciales — nunca al repositorio
+*.xlsx
+*.csv
+
+# Credenciales
+.env
+*.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Mac
+.DS_Store
