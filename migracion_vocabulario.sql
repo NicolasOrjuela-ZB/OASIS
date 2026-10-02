@@ -235,3 +235,23 @@ WHERE table_schema = 'public' ORDER BY 1;
 SELECT (SELECT count(*) FROM compras)             AS compras,
        (SELECT count(*) FROM materiales)          AS materiales,
        (SELECT count(*) FROM v_inversion_diaria)  AS filas_diarias;
+
+
+-- ---------------------------------------------------------------------------
+-- 7. v_cuadre solo evalúa compras con al menos un material con fechas
+--
+-- Las compras sin materiales, o cuyos materiales no tienen fechas, ya
+-- aparecen en v_alertas como pendientes de captura. Aquí solo interesa
+-- detectar repartos que no suman el valor total.
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE VIEW v_cuadre AS
+SELECT c.codigo, c.valor_total,
+       coalesce(sum(d.costo_proyectado), 0) AS asignado,
+       coalesce(sum(d.costo_proyectado), 0) - c.valor_total AS diferencia
+FROM compras c
+LEFT JOIN v_inversion_diaria d ON d.id = c.codigo
+WHERE EXISTS (SELECT 1 FROM materiales mt
+              WHERE mt.compra_id = c.id AND mt.fecha_inicio IS NOT NULL)
+GROUP BY c.id, c.codigo, c.valor_total
+HAVING abs(coalesce(sum(d.costo_proyectado), 0) - c.valor_total) > 1;
