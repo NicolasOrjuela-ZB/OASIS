@@ -492,7 +492,7 @@ class Carga:
     # -- huérfanos ---------------------------------------------------------
 
     def huerfanos(self):
-        """Filas que existen en la base pero ya no en el Sheets."""
+        """Filas que existen en la base pero ya no en el Sheets. No se borran solas."""
         ws = self.wb["Flow"]
         codigos = {texto(ws.cell(row=r, column=self.FLOW["codigo"]).value)
                    for r in filas(ws, self.flow_ini, self.FLOW["codigo"])}
@@ -501,6 +501,22 @@ class Carga:
         for (c,) in self.cur.fetchall():
             if c not in codigos:
                 self.avisos["material en la base que ya no está en el Sheets"].append(c)
+
+        wt = self.wb["Tracking"]
+        en_sheets = set()
+        for r in filas(wt, self.trk_ini, self.TRK["ejecucion"]):
+            mat, sec = secuencia_desde_codigo(texto(wt.cell(row=r, column=self.TRK["ejecucion"]).value))
+            if sec:
+                en_sheets.add((mat, sec))
+        self.cur.execute("""
+            SELECT m.codigo, e.secuencia
+            FROM ejecuciones e JOIN materiales m ON m.id = e.material_id
+            WHERE m.mercado_id = %s
+        """, (self.mercado_id,))
+        for mat, sec in self.cur.fetchall():
+            if (mat, sec) not in en_sheets:
+                self.avisos["ejecución en la base que ya no está en el Sheets"].append(
+                    f"{mat}-{chr(64 + sec)}")
 
     # -- reporte -----------------------------------------------------------
 
