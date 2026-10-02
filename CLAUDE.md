@@ -66,19 +66,27 @@ La Fase 1 está validada: `v_inversion_diaria` reproduce la hoja `Inversion_Dail
 
 ## Cómo cargar datos
 
+La carga lee el Google Sheets en vivo; ya no hace falta exportar el `.xlsx`. Las variables de conexión a Supabase (`PGHOST`, `PGUSER`, `PGPASSWORD`, etc.) viven en `.env`.
+
 ```
-export PGHOST=aws-0-us-east-2.pooler.supabase.com PGPORT=5432 PGDATABASE=postgres
-export PGUSER=postgres.tjlteqhqctdtlbppigdi PGPASSWORD='...' PGSSLMODE=require
-python3 cargar_oasis.py oasis.xlsx --dry-run   # simula
-python3 cargar_oasis.py oasis.xlsx             # carga
+source .env && python3 cargar_oasis.py --sheet 13Vh45CymNMntNG-EW3NQnglnfyvq39nT7nvediDTV1g --dry-run   # simula
+source .env && python3 cargar_oasis.py --sheet 13Vh45CymNMntNG-EW3NQnglnfyvq39nT7nvediDTV1g             # carga
 ```
 
+Las credenciales de la cuenta de servicio de Google viven en `credenciales_google.json`, en la raíz del proyecto. Ese archivo **nunca** va al repositorio; está en `.gitignore`.
+
+Sigue funcionando la carga desde un archivo (`python3 cargar_oasis.py oasis.xlsx`) como respaldo.
+
 El script localiza encabezados por nombre, no por posición. Si el Sheets cambia de layout, se adapta; si falta un encabezado, se detiene y dice cuál.
+
+Al final imprime avisos de calidad, entre ellos:
+- **Ejecuciones huérfanas**: ejecuciones cuyo material no está cargado, y materiales que siguen en la base pero ya no están en el Sheets.
+- **Fechas vacías o inválidas**: ejecuciones sin fechas, con una sola fecha, con fecha escrita como texto o con fechas invertidas.
 
 ## Qué NO hacer
 
 - **Nunca** hacer commit de archivos `.xlsx` o `.csv`: contienen inversión publicitaria confidencial. El `.gitignore` los excluye; no lo cambies.
-- **Nunca** escribir credenciales en archivos del repositorio.
+- **Nunca** escribir credenciales en archivos del repositorio. `.env` y `credenciales_google.json` están en `.gitignore`; no los saques de ahí.
 - No modificar el Google Sheets. La carga es Sheets → Supabase, en una sola dirección.
 - No cambiar las reglas de reparto ni el contrato con BI sin confirmar con Nicolás.
 - Preferir cambios pequeños y verificables. Después de tocar vistas, correr `v_cuadre`.
