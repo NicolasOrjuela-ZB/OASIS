@@ -7,10 +7,13 @@ así que refrescar los datos mientras los equipos siguen llenando 2026 es
 simplemente volver a ejecutarlo.
 
 Uso:
-    export PGHOST=... PGPORT=5432 PGDATABASE=oasis PGUSER=... PGPASSWORD=...
-    python cargar_oasis.py OASIS_FLOW_TRACKING_MCO_MERCADOLIBRE.xlsx
+    source .env
+    python cargar_oasis.py --sheet 13Vh45CymNMntNG-EW3NQnglnfyvq39nT7nvediDTV1g   # lee el Sheets en vivo
+    python cargar_oasis.py oasis.xlsx                                           # o un Excel descargado
 
 Opciones:
+    --sheet ID        ID del Google Sheets (el de la URL). Requiere credenciales_google.json
+    --credenciales    ruta a la llave de la cuenta de servicio (default: credenciales_google.json)
     --mercado MCO     mercado al que pertenece el archivo (default: MCO)
     --dry-run         muestra qué haría sin escribir nada
 """
@@ -113,6 +116,65 @@ GLOSARIO_COLS = {
 
 
 # ---------------------------------------------------------------------------
+# Lectura directa de Google Sheets.
+#
+# Presenta las hojas con la misma interfaz que openpyxl (.cell(row, col).value,
+# .max_row, .max_column) para que el resto del script no distinga el origen.
+# ---------------------------------------------------------------------------
+
+from datetime import date, timedelta
+
+_EPOCA_SHEETS = date(1899, 12, 30)   # el serial 1 de Sheets es el 31/12/1899
+
+
+class _Celda:
+    __slots__ = ("value",)
+
+    def __init__(self, value):
+        self.value = value
+
+
+class _HojaSheets:
+    def __init__(self, filas):
+        self._filas = filas
+        self.max_row = len(filas)
+        self.max_column = max((len(f) for f in filas), default=0)
+
+    def cell(self, row, column):
+        try:
+            v = self._filas[row - 1][column - 1]
+        except IndexError:
+            return _Celda(None)
+        return _Celda(None if v == "" else v)
+
+
+class _LibroSheets:
+    def __init__(self, sheet_id, credenciales):
+        try:
+            import gspread
+        except ImportError:
+            sys.exit("Falta la librería gspread. Instálala con: pip3 install gspread")
+        if not os.path.exists(credenciales):
+            sys.exit(f"No encuentro {credenciales}. Es la llave JSON de la cuenta de servicio.")
+        cliente = gspread.service_account(filename=credenciales)
+        try:
+            self._libro = cliente.open_by_key(sheet_id)
+        except gspread.exceptions.APIError as e:
+            sys.exit(f"No pude abrir el Sheets. ¿Lo compartiste con la cuenta de servicio?\n{e}")
+        self._cache = {}
+
+    def __getitem__(self, nombre):
+        if nombre not in self._cache:
+            try:
+                hoja = self._libro.worksheet(nombre)
+            except Exception:
+                sys.exit(f"El Sheets no tiene una hoja llamada '{nombre}'.")
+            filas = hoja.get_all_values(value_render_option="UNFORMATTED_VALUE")
+            self._cache[nombre] = _HojaSheets(filas)
+        return self._cache[nombre]
+
+
+# ---------------------------------------------------------------------------
 # Utilidades
 # ---------------------------------------------------------------------------
 
@@ -136,10 +198,13 @@ def numero(v):
 
 
 def fecha(v):
+    """Acepta datetime (Excel) o serial numérico (Sheets). Texto -> None."""
     if v is None or v == "":
         return None
     if hasattr(v, "date"):
         return v.date()
+    if isinstance(v, (int, float)) and 20000 <= v <= 80000:   # ~1954 a ~2119
+        return _EPOCA_SHEETS + timedelta(days=int(v))
     return None
 
 
@@ -384,10 +449,18 @@ class Carga:
                 self.avisos["sub campaña fuera del glosario"].append(
                     f"{codigo}: {sub!r}")
 
-            fi, ff = fecha(g("fecha_inicio")), fecha(g("fecha_fin"))
+            raw_fi, raw_ff = g("fecha_inicio"), g("fecha_fin")
+            fi, ff = fecha(raw_fi), fecha(raw_ff)
             if (fi is None) != (ff is None):
                 self.avisos["ejecución con una sola fecha"].append(codigo)
                 fi = ff = None
+            elif fi is None:
+                # Distingue celda vacía de texto que parece fecha pero no lo es
+                if texto(raw_fi) or texto(raw_ff):
+                    self.avisos["ejecución con fecha escrita como texto (no es fecha válida)"].append(
+                        f"{codigo}: {texto(raw_fi)!r} → {texto(raw_ff)!r}")
+                else:
+                    self.avisos["ejecución sin fechas"].append(codigo)
             if fi and ff and ff < fi:
                 self.avisos["ejecución con fechas invertidas"].append(codigo)
                 continue
@@ -456,15 +529,24 @@ class Carga:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("archivo")
+    ap.add_argument("archivo", nargs="?", help="Excel exportado del Sheets")
+    ap.add_argument("--sheet", help="ID del Google Sheets para leer en vivo")
+    ap.add_argument("--credenciales", default="credenciales_google.json")
     ap.add_argument("--mercado", default="MCO")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    if not os.getenv("PGHOST"):
-        sys.exit("Faltan las variables de conexión (PGHOST, PGDATABASE, PGUSER...).")
+    if not args.sheet and not args.archivo:
+        ap.error("indica un archivo .xlsx o --sheet ID")
 
-    wb = openpyxl.load_workbook(args.archivo, data_only=True)
+    if not os.getenv("PGHOST"):
+        sys.exit("Faltan las variables de conexión. Corre: source .env")
+
+    if args.sheet:
+        print(f"  Leyendo Google Sheets {args.sheet} en vivo...")
+        wb = _LibroSheets(args.sheet, args.credenciales)
+    else:
+        wb = openpyxl.load_workbook(args.archivo, data_only=True)
     conn = psycopg2.connect()
 
     try:
