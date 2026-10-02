@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-OASIS v2.0 — Carga desde el Sheets exportado hacia Cloud SQL.
+OASIS v2.0 — Carga desde Google Sheets hacia Supabase.
+
+Vocabulario: una COMPRA es un paquete de OOH con ID propio (001, 002...),
+equivale a una fila del Flow. Un MATERIAL es lo que corre sobre esa compra
+(001-A, 001-B...), equivale a una fila del Tracking.
 
 Se puede correr tantas veces como haga falta: hace upsert por llave natural,
 así que refrescar los datos mientras los equipos siguen llenando 2026 es
@@ -102,7 +106,7 @@ FLOW_COLS = {
 }
 
 TRACKING_COLS = {
-    "material": "ID FLOW", "ejecucion": "ID EJECUCION", "sub_campana": "SUB CAMPANA",
+    "compra": "ID FLOW", "material": "ID EJECUCION", "sub_campana": "SUB CAMPANA",
     "referencia": "REFERENCIA", "enlace": "ENLACE MATERIAL",
     "reporte": "REPORTE DE IMPLEMENTACION",
     "fecha_inicio": "FECHA INICIO", "fecha_fin": "FECHA FIN",
@@ -336,9 +340,9 @@ class Carga:
             (self.mercado_id,))
         self.mapa_proveedores = dict(self.cur.fetchall())
 
-    # -- materiales --------------------------------------------------------
+    # -- compras --------------------------------------------------------
 
-    def materiales(self):
+    def compras(self):
         ws = self.wb["Flow"]
         pendientes = []
 
@@ -348,10 +352,10 @@ class Carga:
 
             fi, ff = fecha(g("fecha_inicio")), fecha(g("fecha_fin"))
             if not fi or not ff:
-                self.avisos["material sin fechas"].append(codigo)
+                self.avisos["compra sin fechas"].append(codigo)
                 continue
             if ff < fi:
-                self.avisos["material con fechas invertidas"].append(codigo)
+                self.avisos["compra con fechas invertidas"].append(codigo)
                 continue
 
             campana_id = None
@@ -383,7 +387,7 @@ class Carga:
             ))
 
         psycopg2.extras.execute_batch(self.cur, """
-            INSERT INTO materiales (
+            INSERT INTO compras (
                 mercado_id, codigo, cliente, campana_id, proveedor_id,
                 tipo_compra, medio, tipo_costo, formato, ubicacion, ciudad,
                 trafico, tiempo, tarifa_bruta, descuento_pct, tarifa_neta,
@@ -413,31 +417,31 @@ class Carga:
                 actualizado_en = now()
         """, pendientes)
 
-        self.stats["materiales"] = len(pendientes)
+        self.stats["compras"] = len(pendientes)
 
         self.cur.execute(
-            "SELECT codigo, id FROM materiales WHERE mercado_id = %s",
+            "SELECT codigo, id FROM compras WHERE mercado_id = %s",
             (self.mercado_id,))
-        self.mapa_materiales = dict(self.cur.fetchall())
+        self.mapa_compras = dict(self.cur.fetchall())
 
-    # -- ejecuciones -------------------------------------------------------
+    # -- materiales -------------------------------------------------------
 
-    def ejecuciones(self):
+    def materiales(self):
         ws = self.wb["Tracking"]
         pendientes = []
 
-        for r in filas(ws, self.trk_ini, self.TRK["ejecucion"]):
+        for r in filas(ws, self.trk_ini, self.TRK["material"]):
             g = lambda k: ws.cell(row=r, column=self.TRK[k]).value
-            codigo = texto(g("ejecucion"))
+            codigo = texto(g("material"))
 
             mat_codigo, secuencia = secuencia_desde_codigo(codigo)
             if secuencia is None:
-                self.avisos["código de ejecución con formato inesperado"].append(codigo)
+                self.avisos["código de material con formato inesperado"].append(codigo)
                 continue
 
-            material_id = self.mapa_materiales.get(mat_codigo)
-            if not material_id:
-                self.avisos["ejecución sin material cargado"].append(codigo)
+            compra_id = self.mapa_compras.get(mat_codigo)
+            if not compra_id:
+                self.avisos["material sin compra cargada"].append(codigo)
                 continue
 
             # La sub campaña puede traer valores fuera del glosario (ODM,
@@ -452,32 +456,32 @@ class Carga:
             raw_fi, raw_ff = g("fecha_inicio"), g("fecha_fin")
             fi, ff = fecha(raw_fi), fecha(raw_ff)
             if (fi is None) != (ff is None):
-                self.avisos["ejecución con una sola fecha"].append(codigo)
+                self.avisos["material con una sola fecha"].append(codigo)
                 fi = ff = None
             elif fi is None:
                 # Distingue celda vacía de texto que parece fecha pero no lo es
                 if texto(raw_fi) or texto(raw_ff):
-                    self.avisos["ejecución con fecha escrita como texto (no es fecha válida)"].append(
+                    self.avisos["material con fecha escrita como texto (no es fecha válida)"].append(
                         f"{codigo}: {texto(raw_fi)!r} → {texto(raw_ff)!r}")
                 else:
-                    self.avisos["ejecución sin fechas"].append(codigo)
+                    self.avisos["material sin fechas"].append(codigo)
             if fi and ff and ff < fi:
-                self.avisos["ejecución con fechas invertidas"].append(codigo)
+                self.avisos["material con fechas invertidas"].append(codigo)
                 continue
 
             pendientes.append((
-                material_id, secuencia, sub_id,
+                compra_id, secuencia, sub_id,
                 texto(g("referencia")), texto(g("enlace")), texto(g("reporte")),
                 fi, ff,
             ))
 
         psycopg2.extras.execute_batch(self.cur, """
-            INSERT INTO ejecuciones (
-                material_id, secuencia, sub_campana_id,
+            INSERT INTO materiales (
+                compra_id, secuencia, sub_campana_id,
                 referencia, enlace, reporte_implementacion,
                 fecha_inicio, fecha_fin)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (material_id, secuencia) DO UPDATE SET
+            ON CONFLICT (compra_id, secuencia) DO UPDATE SET
                 sub_campana_id         = EXCLUDED.sub_campana_id,
                 referencia             = EXCLUDED.referencia,
                 enlace                 = EXCLUDED.enlace,
@@ -487,7 +491,7 @@ class Carga:
                 actualizado_en         = now()
         """, pendientes)
 
-        self.stats["ejecuciones"] = len(pendientes)
+        self.stats["materiales"] = len(pendientes)
 
     # -- huérfanos ---------------------------------------------------------
 
@@ -497,25 +501,25 @@ class Carga:
         codigos = {texto(ws.cell(row=r, column=self.FLOW["codigo"]).value)
                    for r in filas(ws, self.flow_ini, self.FLOW["codigo"])}
         self.cur.execute(
-            "SELECT codigo FROM materiales WHERE mercado_id = %s", (self.mercado_id,))
+            "SELECT codigo FROM compras WHERE mercado_id = %s", (self.mercado_id,))
         for (c,) in self.cur.fetchall():
             if c not in codigos:
-                self.avisos["material en la base que ya no está en el Sheets"].append(c)
+                self.avisos["compra en la base que ya no está en el Sheets"].append(c)
 
         wt = self.wb["Tracking"]
         en_sheets = set()
-        for r in filas(wt, self.trk_ini, self.TRK["ejecucion"]):
-            mat, sec = secuencia_desde_codigo(texto(wt.cell(row=r, column=self.TRK["ejecucion"]).value))
+        for r in filas(wt, self.trk_ini, self.TRK["material"]):
+            mat, sec = secuencia_desde_codigo(texto(wt.cell(row=r, column=self.TRK["material"]).value))
             if sec:
                 en_sheets.add((mat, sec))
         self.cur.execute("""
             SELECT m.codigo, e.secuencia
-            FROM ejecuciones e JOIN materiales m ON m.id = e.material_id
+            FROM materiales e JOIN compras m ON m.id = e.compra_id
             WHERE m.mercado_id = %s
         """, (self.mercado_id,))
         for mat, sec in self.cur.fetchall():
             if (mat, sec) not in en_sheets:
-                self.avisos["ejecución en la base que ya no está en el Sheets"].append(
+                self.avisos["material en la base que ya no está en el Sheets"].append(
                     f"{mat}-{chr(64 + sec)}")
 
     # -- reporte -----------------------------------------------------------
@@ -524,7 +528,7 @@ class Carga:
         print("\n" + "=" * 62)
         print(f"  Carga de {self.mercado_codigo}" + ("  (simulación)" if self.dry_run else ""))
         print("=" * 62)
-        for k in ("campanas", "proveedores", "materiales", "ejecuciones"):
+        for k in ("campanas", "proveedores", "compras", "materiales"):
             print(f"  {k:<14} {self.stats[k]:>6}")
 
         if self.avisos:
@@ -569,8 +573,8 @@ def main():
         carga = Carga(conn, wb, args.mercado.upper(), args.dry_run)
         carga.campanas()
         carga.proveedores()
+        carga.compras()
         carga.materiales()
-        carga.ejecuciones()
         carga.huerfanos()
 
         if args.dry_run:

@@ -2,105 +2,105 @@
 
 Sistema de seguimiento de pauta OOH (publicidad exterior) de Mercado Libre, operado por el equipo ZetaB. Reemplaza un sistema construido en Google Sheets. Responde siempre en español.
 
-## Qué es
+## Vocabulario — usarlo con precisión
 
-Hay dos entidades centrales:
+- **Compra** — un paquete de OOH comprado a un proveedor: una valla, un paradero, un circuito de pantallas. Tiene ID propio (001, 002…), formato, ubicación, fechas de compra y **valor_total**. Equivale a una fila de la hoja `Flow`. Una compra es una línea de costo: el mismo paradero con arriendo y producción son dos compras distintas.
+- **Material** — lo que corre sobre una compra para una sub campaña, con sus propias fechas. Una compra puede tener varios materiales (001-A, 001-B…). Equivale a una fila de la hoja `Tracking`.
 
-- **materiales** — una compra de pauta: una valla, un paradero, una pantalla. Tiene proveedor, formato, ubicación, fechas de compra y **valor_total**. Equivale a la hoja `Flow` del Sheets. Un material representa una línea de costo, no un soporte físico: un mismo paradero con arriendo y producción son dos materiales distintos.
-- **ejecuciones** — cada uso de un material para una sub campaña, con sus propias fechas. Un material puede tener varias (001-A, 001-B…). Equivale a la hoja `Tracking`.
+No usar "ejecución" para referirse al material. La única excepción es la columna `id_ejecucion` de las vistas de inversión, que conserva ese nombre por compatibilidad con la hoja `Inversion_Daily` que consume BI.
 
-El objetivo del sistema es saber cuánta plata corresponde a cada ejecución, día por día, repartiendo el valor del material.
+El objetivo del sistema es saber cuánta plata corresponde a cada material, día por día, repartiendo el valor de la compra.
 
 ## Dónde vive cada cosa
 
 | Qué | Dónde |
 |---|---|
 | Base de datos | Supabase, proyecto `tjlteqhqctdtlbppigdi` (Postgres), conectado por MCP en modo lectura |
-| Esquema | `oasis_v2_esquema.sql` — la fuente de verdad del modelo |
-| Carga desde Sheets | `cargar_oasis.py` — lee un `.xlsx` exportado y hace upsert |
+| Esquema original | `oasis_v2_esquema.sql` (vocabulario viejo; ver `migracion_vocabulario.sql`) |
+| Carga desde Sheets | `cargar_oasis.py` — lee el Sheets en vivo y hace upsert |
+| Credenciales Google | `credenciales_google.json` — cuenta de servicio, nunca al repositorio |
+| Credenciales Postgres | `.env` — nunca al repositorio |
 | Código | GitHub `NicolasOrjuela-ZB/OASIS` |
-| Fuente de captura actual | Google Sheets `OASIS_FLOW_TRACKING_MCO_MERCADOLIBRE` (los equipos siguen llenando ahí hasta que exista la interfaz) |
+| Fuente de captura actual | Google Sheets `13Vh45CymNMntNG-EW3NQnglnfyvq39nT7nvediDTV1g` (los equipos siguen llenando ahí hasta que exista la interfaz) |
 
 ## Modelo de datos
 
 ```
 mercados ──< campanas            (glosario oficial de ZetaB, no se edita aquí)
 mercados ──< proveedores         (una fila por proveedor-mercado, agrupadas por grupo_id)
-mercados ──< materiales ──< ejecuciones
+mercados ──< compras ──< materiales
 usuarios ──< usuario_mercados    (a qué países accede cada usuario interno)
 configuracion                    (clave fecha_corte: nula = hoy)
 ```
 
-Siete mercados: MCO, MLB, MLM, MLA, MLC, MLU, MPE. Hoy solo hay datos de MCO (Colombia).
+Siete mercados: MCO, MLB, MLM, MLA, MLC, MLU, MPE. Hoy solo hay datos de MCO.
 
 Enums: `tipo_costo` (EXHIBICION, PRODUCCION, IMPUESTOS), `tipo_compra` (DIRECTO, BONIFICADO), `medio` (OOH, DOOH), `rol` (PLANNING, ZB, AGENCIA, PROVEEDOR, LECTURA, ADMIN).
 
+Vistas: `v_materiales` (nivel material, con taxonomía), `v_inversion_diaria`, `v_inversion_semanal`, `v_inversion_total`, `v_alertas`, `v_cuadre`.
+
 ## Reglas de negocio — no cambiar sin consultar
 
-**Reparto de inversión.** El valor de un material se reparte entre sus ejecuciones según los días de calendario que ocupó cada una. Cuando varias ejecuciones corren el mismo día —lo normal en pantallas digitales—, el costo de ese día se divide en partes iguales entre las activas. Está implementado en `v_inversion_diaria`. Propiedad de verificación: sumar el costo de un material por fecha da siempre `valor_total / días calendario`, constante.
+**Reparto de inversión.** El valor de una compra se reparte entre sus materiales según los días de calendario que ocupó cada uno. Cuando varios materiales corren el mismo día —lo normal en pantallas digitales—, el costo de ese día se divide en partes iguales entre los activos. Está en `v_inversion_diaria`. Verificación: sumar el costo de una compra por fecha da siempre `valor_total / días calendario`, constante.
 
-**Nunca repartir por días-ejecución.** Ese fue el modelo original y estaba mal: con ejecuciones simultáneas cuenta el mismo día varias veces e infla la curva de gasto.
+**Nunca repartir por días-material.** Ese fue el modelo original y estaba mal: con materiales simultáneos cuenta el mismo día varias veces.
+
+**Un material nunca excede su compra.** Las compras son mensuales y las campañas no respetan el calendario. Si una campaña cruza dos compras del mismo soporte, se parte en dos materiales, uno por compra: 001-A del 15 al 30 de junio bajo la compra de junio, 002-A del 1 al 15 de julio bajo la de julio. En la herramienta es **bloqueo al guardar**, no aviso. El formulario debe ofrecer crear el segundo tramo bajo la compra siguiente, buscándola por soporte y proveedor.
 
 **Costo proyectado vs ejecutado.** Proyectado es todo el periodo. Ejecutado solo los días hasta `configuracion.fecha_corte` (nula = hoy). Ambos se reportan siempre.
 
-**Las vistas se encadenan.** `v_inversion_semanal` y `v_inversion_total` se agregan desde `v_inversion_diaria`. No duplicar lógica en ellas.
+**Las vistas se encadenan.** Semanal y total se agregan desde la diaria. No duplicar lógica.
 
-**Código de ejecución.** `material.codigo + '-' + letra` donde la letra es la secuencia (1=A). La letra no implica orden cronológico.
+**Código de material.** `compra.codigo + '-' + letra` donde la letra es la secuencia (1=A). La letra no implica orden cronológico.
 
-**Taxonomía de 11 piezas.** Calculada en `v_ejecuciones`. El mercado sale del material, no es fijo.
+**Taxonomía de 11 piezas.** Calculada en `v_materiales`. El mercado sale de la compra.
 
-**Validaciones.** Fecha fin ≥ fecha inicio. Campaña y proveedor del mismo mercado que el material (FK compuesta). Sub campaña del glosario del mismo mercado.
+**Validaciones al capturar.** Fecha fin ≥ fecha inicio. Material dentro del periodo de su compra. Campaña y proveedor del mismo mercado que la compra (FK compuesta). Sub campaña del glosario del mismo mercado. Formato entre los que maneja ese proveedor.
 
 ## Contrato con BI
 
-`v_inversion_diaria` es lo que consume el equipo de BI. Sus 18 columnas y nombres deben mantenerse estables: site, bu, year, month, week, date, proveedor, tipo_costo, formato, valor_total, id, id_ejecucion, campana, sub_campana, pct_participacion, costo_proyectado, estado, costo_ejecutado.
+`v_inversion_diaria` es lo que consume BI. Sus 18 columnas y nombres deben mantenerse estables: site, bu, year, month, week, date, proveedor, tipo_costo, formato, valor_total, id (compra), id_ejecucion (material), campana, sub_campana, pct_participacion, costo_proyectado, estado, costo_ejecutado.
 
 ## Verificación
 
 ```sql
-SELECT * FROM v_cuadre;    -- debe salir vacío: materiales donde la suma no da el valor total
-SELECT * FROM v_alertas;   -- pendientes de captura: sin fechas, sin sub campaña, etc.
+SELECT * FROM v_cuadre;    -- debe salir vacío: compras donde la suma no da el valor total
+SELECT * FROM v_alertas;   -- pendientes de captura
 ```
 
-La Fase 1 está validada: `v_inversion_diaria` reproduce la hoja `Inversion_Daily` del Sheets con diferencia menor a $2 sobre $3.080 millones.
+Fase 1 validada: `v_inversion_diaria` reproduce la hoja `Inversion_Daily` con diferencia menor a $2 sobre $3.080 millones.
 
 ## Cómo cargar datos
 
-La carga lee el Google Sheets en vivo; ya no hace falta exportar el `.xlsx`. Las variables de conexión a Supabase (`PGHOST`, `PGUSER`, `PGPASSWORD`, etc.) viven en `.env`.
-
 ```
-source .env && python3 cargar_oasis.py --sheet 13Vh45CymNMntNG-EW3NQnglnfyvq39nT7nvediDTV1g --dry-run   # simula
-source .env && python3 cargar_oasis.py --sheet 13Vh45CymNMntNG-EW3NQnglnfyvq39nT7nvediDTV1g             # carga
+source .env
+python3 cargar_oasis.py --sheet 13Vh45CymNMntNG-EW3NQnglnfyvq39nT7nvediDTV1g --dry-run   # simula
+python3 cargar_oasis.py --sheet 13Vh45CymNMntNG-EW3NQnglnfyvq39nT7nvediDTV1g             # carga
 ```
 
-Las credenciales de la cuenta de servicio de Google viven en `credenciales_google.json`, en la raíz del proyecto. Ese archivo **nunca** va al repositorio; está en `.gitignore`.
-
-Sigue funcionando la carga desde un archivo (`python3 cargar_oasis.py oasis.xlsx`) como respaldo.
-
-El script localiza encabezados por nombre, no por posición. Si el Sheets cambia de layout, se adapta; si falta un encabezado, se detiene y dice cuál.
-
-Al final imprime avisos de calidad, entre ellos:
-- **Ejecuciones huérfanas**: ejecuciones cuyo material no está cargado, y materiales que siguen en la base pero ya no están en el Sheets.
-- **Fechas vacías o inválidas**: ejecuciones sin fechas, con una sola fecha, con fecha escrita como texto o con fechas invertidas.
+El script localiza encabezados por nombre, no por posición. Si falta uno, se detiene y dice cuál. Es repetible: hace upsert por llave natural. Detecta compras y materiales que ya no están en el Sheets pero no los borra: eso se decide a mano.
 
 ## Qué NO hacer
 
-- **Nunca** hacer commit de archivos `.xlsx` o `.csv`: contienen inversión publicitaria confidencial. El `.gitignore` los excluye; no lo cambies.
-- **Nunca** escribir credenciales en archivos del repositorio. `.env` y `credenciales_google.json` están en `.gitignore`; no los saques de ahí.
+- **Nunca** hacer commit de `.xlsx`, `.csv`, `.env` ni `credenciales_google.json`. El `.gitignore` los excluye; no lo cambies.
 - No modificar el Google Sheets. La carga es Sheets → Supabase, en una sola dirección.
 - No cambiar las reglas de reparto ni el contrato con BI sin confirmar con Nicolás.
 - Preferir cambios pequeños y verificables. Después de tocar vistas, correr `v_cuadre`.
 
 ## Estado y pendientes
 
-**Hecho:** esquema, vistas de cálculo, carga repetible, validación contra Sheets, repositorio.
+**Hecho:** esquema, vistas de cálculo, carga en vivo desde Sheets, validación contra Sheets, repositorio, corrección de vocabulario.
 
-**Fase 2 (siguiente):** interfaz para planning y ZB que reemplace Flow y Tracking, o portal de proveedores con autenticación y RLS. Decisión pendiente.
+**Fase 2 (siguiente):** portal de proveedores con autenticación y RLS, o interfaz interna para planning y ZB. Decisión pendiente.
 
-**Datos por limpiar en el Sheets** (no es trabajo del sistema): 31 ejecuciones sin fechas, 30 materiales sin ejecución, 17 con sub campaña `ODM` que no está en el glosario, proveedores duplicados (`JCDECAUX`/`JCDX`, `PUBLICIDAD BARRANQUILLA`/`PUBLICIDAD BQUILLA`).
+**Datos por limpiar en el Sheets** (trabajo del equipo, no del sistema): 31 materiales sin fechas, 17 con sub campaña `ODM` fuera del glosario, 92 materiales fuera del periodo de su compra (el equipo los está revisando con el detalle de patrones), proveedores duplicados (`JCDECAUX`/`JCDX`, `PUBLICIDAD BARRANQUILLA`/`PUBLICIDAD BQUILLA`).
 
-**Decisiones abiertas:** días de montaje entre campañas, reparto por share of voice, evidencias con copia propia, identidad individual de proveedores.
+**Decisiones abiertas:** días de montaje entre campañas, reparto por share of voice, evidencias con copia propia, identidad individual de proveedores, campo que enlace los tramos de una misma campaña partida entre compras.
 
 ## Contexto del usuario
 
 Nicolás trabaja en OOH para Mercado Libre Colombia. No es desarrollador; maneja bien Sheets y está aprendiendo el stack. Prefiere explicaciones paso a paso, respuestas directas, y que se le señalen problemas y tradeoffs con claridad en vez de validarlo todo. Las decisiones de arquitectura están documentadas y no se re-litigan salvo que él lo pida.
+
+## Permisos de Nicolás en GCP (proyecto mbw-spl-brazil)
+
+Editor, Create Service Accounts, Service Account Key Admin, BigQuery User, BigQuery Job User, BigQuery Connection User, BigQuery Metadata Viewer. Puede crear cuentas de servicio, llaves, Cloud SQL, Cloud Run, datasets BigQuery y habilitar APIs. No puede asignar permisos a otros ni ver facturación.
