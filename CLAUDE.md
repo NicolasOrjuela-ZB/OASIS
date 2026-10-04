@@ -20,6 +20,8 @@ El objetivo del sistema es saber cuánta plata corresponde a cada material, día
 | Carga desde Sheets | `cargar_oasis.py` — lee el Sheets en vivo y hace upsert |
 | Credenciales Google | `credenciales_google.json` — cuenta de servicio, nunca al repositorio |
 | Credenciales Postgres | `.env` — nunca al repositorio |
+| Autenticación y RLS | `rls_fase2.sql` — funciones de identidad, políticas, trigger de vínculo |
+| Sistema de diseño | `DISENO.md` — tokens, tipografía, componentes y pantallas de la interfaz |
 | Código | GitHub `NicolasOrjuela-ZB/OASIS` |
 | Fuente de captura actual | Google Sheets `13Vh45CymNMntNG-EW3NQnglnfyvq39nT7nvediDTV1g` (los equipos siguen llenando ahí hasta que exista la interfaz) |
 
@@ -86,12 +88,15 @@ El script localiza encabezados por nombre, no por posición. Si falta uno, se de
 - No modificar el Google Sheets. La carga es Sheets → Supabase, en una sola dirección.
 - No cambiar las reglas de reparto ni el contrato con BI sin confirmar con Nicolás.
 - Preferir cambios pequeños y verificables. Después de tocar vistas, correr `v_cuadre`.
+- No dar de alta a alguien en un solo paso. Son dos: (1) su fila en `usuarios` con el correo exacto, **antes** de su primer login, para que el trigger complete `auth_user_id`; si entra antes, el vínculo hay que hacerlo a mano. (2) Sus filas en `usuario_mercados`. Un PLANNING o ZB sin mercados entra, ve los catálogos, pero no ve ninguna compra ni material. ADMIN no necesita mercados: ve todos.
 
 ## Estado y pendientes
 
-**Hecho:** esquema, vistas de cálculo, carga en vivo desde Sheets, validación contra Sheets, repositorio, corrección de vocabulario.
+**Hecho:** esquema, vistas de cálculo, carga en vivo desde Sheets, validación contra Sheets, repositorio, corrección de vocabulario, autenticación y RLS para roles internos.
 
-**Fase 2 (siguiente):** portal de proveedores con autenticación y RLS, o interfaz interna para planning y ZB. Decisión pendiente.
+**RLS:** activo con 18 políticas para roles internos (PLANNING, ZB, LECTURA, ADMIN), definidas en `rls_fase2.sql`. Catálogos: lectura para internos, escritura ADMIN. `compras` y `materiales`: según `fn_mis_mercados()`; LECTURA no escribe. `usuarios` y `usuario_mercados`: cada uno lo suyo, ADMIN todo. Las vistas tienen `security_invoker` y `anon` no tiene acceso. AGENCIA y PROVEEDOR no tienen políticas: sin acceso hasta la Fase 3. `postgres` salta RLS, así que la carga y BI no se ven afectados.
+
+**Fase 2 (en curso):** interfaz interna para planning y ZB. Se construye con Claude Code siguiendo `DISENO.md` (pantallas Compras, Materiales, Consulta, Inversión y Alertas). El portal de proveedores pasa a la Fase 3.
 
 **Datos por limpiar en el Sheets** (trabajo del equipo, no del sistema): 31 materiales sin fechas, 17 con sub campaña `ODM` fuera del glosario, 92 materiales fuera del periodo de su compra (el equipo los está revisando con el detalle de patrones), proveedores duplicados (`JCDECAUX`/`JCDX`, `PUBLICIDAD BARRANQUILLA`/`PUBLICIDAD BQUILLA`).
 
