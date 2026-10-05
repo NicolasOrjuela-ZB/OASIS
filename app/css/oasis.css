@@ -79,7 +79,16 @@ body {
   border-top: 2px solid transparent;
 }
 .topbar nav a.activo { color: var(--y); border-bottom-color: var(--y); }
-.topbar nav .deshabilitado { color: #5E5A4E; cursor: not-allowed; }
+.topbar nav .cuenta-alertas {
+  font-size: 10px;
+  font-weight: 500;
+  color: #A39D8B;
+  margin-left: 5px;
+  position: relative;
+  top: -5px;
+}
+.topbar nav .cuenta-alertas:empty { display: none; }
+.topbar nav a.activo .cuenta-alertas { color: var(--y); }
 .topbar .usuario { margin-left: auto; display: flex; align-items: center; gap: 16px; }
 .topbar .usuario .nombre { font-size: 12px; font-weight: 700; }
 .topbar .usuario .rol { font-size: 11px; color: #A39D8B; font-family: var(--f-mono); }

@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OASIS · Inversión</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sofia+Sans+Extra+Condensed:wght@700;800&family=Mulish:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="css/oasis.css">
+  <link rel="stylesheet" href="css/tabla.css">
+  <link rel="stylesheet" href="css/lectura.css">
+</head>
+<body>
+  <header class="topbar" id="barra"></header>
+
+  <main class="pagina" id="app" v-cloak>
+    <div class="eyebrow">{{ eyebrow }}</div>
+    <h1 class="titulo">Inversión</h1>
+
+    <div v-if="errorCarga" class="alerta error" style="margin-bottom:14px">{{ errorCarga }}</div>
+
+    <!-- Filtros: compartidos por las tres pestañas -->
+    <div class="filtros filtros-sueltos filtros-inversion">
+      <div class="campo">
+        <label for="f-mercado">Mercado</label>
+        <select id="f-mercado" v-model="filtros.mercado" :disabled="misMercados.length === 1">
+          <option v-if="misMercados.length > 1" value="">Todos</option>
+          <option v-for="m in misMercados" :key="m.id" :value="m.id">{{ m.codigo }} · {{ m.nombre }}</option>
+        </select>
+      </div>
+      <div class="campo">
+        <label for="f-mes">Mes</label>
+        <seleccion-multiple id="f-mes" v-model="filtros.meses" :opciones="opcionesMes"></seleccion-multiple>
+      </div>
+      <div class="campo">
+        <label for="f-proveedor">Proveedor</label>
+        <seleccion-multiple id="f-proveedor" v-model="filtros.proveedores" :opciones="opcionesProveedor"></seleccion-multiple>
+      </div>
+      <div class="campo">
+        <label for="f-tipo">Tipo de costo</label>
+        <seleccion-multiple id="f-tipo" v-model="filtros.tiposCosto" :opciones="opcionesTipoCosto"></seleccion-multiple>
+      </div>
+      <div class="campo">
+        <label for="f-sub">Sub campaña</label>
+        <seleccion-multiple id="f-sub" v-model="filtros.subCampanas" :opciones="opcionesSubCampana"></seleccion-multiple>
+      </div>
+    </div>
+
+    <!-- Gráficos: desde la diaria filtrada. Barra completa = proyectado; la parte
+         ámbar es lo ejecutado a la fecha de corte. -->
+    <section class="card graficos" :class="{ refrescando: datos.diaria.cargando && datos.diaria.filas.length }">
+      <div class="card-cab">
+        <h2>Resumen</h2>
+        <div class="leyenda" aria-label="Leyenda">
+          <span><i class="muestra-g ejec"></i>Ejecutado</span>
+          <span><i class="muestra-g pend"></i>Por ejecutar</span>
+        </div>
+        <span class="nota-graficos">Barra completa = proyectado · M = millones</span>
+        <div class="acciones-cab">
+          <button class="btn" type="button" :disabled="!datos.diaria.filas.length"
+                  @click="verTablasGraficos = !verTablasGraficos">{{ verTablasGraficos ? 'Ver gráficos' : 'Ver como tabla' }}</button>
+        </div>
+      </div>
+
+      <div v-if="datos.diaria.error" class="vacio">{{ datos.diaria.error }}</div>
+      <div v-else-if="!datos.diaria.filas.length" class="vacio">Cargando gráficos…</div>
+      <div v-else-if="graficos.vacio" class="vacio">Sin inversión con estos filtros.</div>
+
+      <div v-else class="graficos-grilla" @mouseleave="ocultarGlobo">
+        <!-- Por mes: columnas -->
+        <figure class="grafico">
+          <figcaption>Por mes</figcaption>
+          <template v-if="!verTablasGraficos">
+            <div class="columnas" role="list">
+              <div v-for="g in graficos.meses" :key="g.clave" class="col" role="listitem">
+                <span class="col-valor mono">{{ pesosCortos(g.proy) }}</span>
+                <button type="button" class="col-barra" :style="{ height: `calc((100% - 20px) * ${g.fraccion})` }" :aria-label="`${g.etiqueta}: proyectado ${pesos(g.proy)}, ejecutado ${pesos(g.ejec)}`"
+                        @pointerenter="mostrarGlobo($event, g)" @pointerleave="ocultarGlobo" @focus="mostrarGlobo($event, g)" @blur="ocultarGlobo">
+                  <span class="seg pend" :style="{ height: (100 - g.pctEjecDeBarra) + '%' }"></span>
+                  <span class="seg ejec" :style="{ height: g.pctEjecDeBarra + '%' }"></span>
+                </button>
+              </div>
+            </div>
+            <div class="columnas-eje">
+              <div v-for="g in graficos.meses" :key="g.clave" class="col-et">
+                <span>{{ g.mes }}</span><span class="mono anio">{{ g.anio }}</span>
+              </div>
+            </div>
+          </template>
+          <table v-else class="tabla tabla-grafico">
+            <thead><tr><th>Mes</th><th class="num">Proyectado</th><th class="num">Ejecutado</th><th class="num">Por ejecutar</th></tr></thead>
+            <tbody><tr v-for="g in graficos.meses" :key="g.clave">
+              <td class="texto">{{ g.etiqueta }}</td><td class="mono num">{{ pesos(g.proy) }}</td>
+              <td class="mono num">{{ pesos(g.ejec) }}</td><td class="mono num">{{ pesos(g.proy - g.ejec) }}</td>
+            </tr></tbody>
+          </table>
+        </figure>
+
+        <!-- Por sub campaña y por proveedor: barras horizontales -->
+        <figure v-for="graf in [{ t: 'Por sub campaña', lista: graficos.subs }, { t: 'Por proveedor', lista: graficos.provs }]"
+                :key="graf.t" class="grafico">
+          <figcaption>{{ graf.t }}</figcaption>
+          <ul v-if="!verTablasGraficos" class="barras">
+            <li v-for="g in graf.lista" :key="g.clave" :class="{ otros: g.otros }">
+              <span class="barra-et" :title="g.etiqueta">{{ g.etiqueta }}</span>
+              <button type="button" class="barra" :aria-label="`${g.etiqueta}: proyectado ${pesos(g.proy)}, ejecutado ${pesos(g.ejec)}`"
+                      @pointerenter="mostrarGlobo($event, g)" @pointerleave="ocultarGlobo" @focus="mostrarGlobo($event, g)" @blur="ocultarGlobo">
+                <span class="pista">
+                  <span class="seg ejec" :style="{ width: g.pctEjec + '%' }"></span>
+                  <span class="seg pend" :style="{ width: g.pctPend + '%' }"></span>
+                  <span class="barra-valor mono">{{ pesosCortos(g.proy) }}</span>
+                </span>
+              </button>
+            </li>
+          </ul>
+          <table v-else class="tabla tabla-grafico">
+            <thead><tr><th>{{ graf.t.replace('Por ', '') }}</th><th class="num">Proyectado</th><th class="num">Ejecutado</th><th class="num">% del total</th></tr></thead>
+            <tbody><tr v-for="g in graf.lista" :key="g.clave">
+              <td class="texto">{{ g.etiqueta }}</td><td class="mono num">{{ pesos(g.proy) }}</td>
+              <td class="mono num">{{ pesos(g.ejec) }}</td><td class="mono num">{{ pct(g.pctTotal) }}</td>
+            </tr></tbody>
+          </table>
+        </figure>
+      </div>
+    </section>
+
+    <div v-if="globo" class="globo globo-grafico" :style="{ left: globo.x + 'px', top: globo.y + 'px' }">
+      <div class="globo-tit">{{ globo.titulo }}</div>
+      <div v-for="f in globo.filas" :key="f.clase" class="globo-fila">
+        <i class="clave" :class="f.clase"></i><strong class="mono">{{ f.valor }}</strong><span>{{ f.texto }}</span>
+      </div>
+    </div>
+
+    <section class="card">
+      <div class="card-cab">
+        <h2>Reparto</h2>
+        <div class="pestanas" role="tablist">
+          <button v-for="(p, clave) in PESTANAS" :key="clave" type="button" role="tab"
+                  :class="{ activa: pestana === clave }" :aria-selected="pestana === clave"
+                  @click="pestana = clave">{{ p.titulo }}</button>
+        </div>
+        <button v-if="esAdmin" type="button" class="corte editable mono" :disabled="!corte.cargado"
+                title="Cambiar la fecha de corte" @click="abrirCorte">
+          Ejecutado a: {{ corte.cargado ? corteTexto : '…' }}<span v-if="corte.cargado && !corte.valor" class="hoy">hoy</span>
+        </button>
+        <span v-else class="corte mono" title="Fecha de corte del costo ejecutado. Solo un ADMIN la cambia.">
+          Ejecutado a: {{ corte.cargado ? corteTexto : '…' }}<span v-if="corte.cargado && !corte.valor" class="hoy">hoy</span>
+        </span>
+        <div class="acciones-cab">
+          <button class="btn" type="button" :disabled="actual.cargando || !filtradas.length"
+                  :title="`Baja las filas filtradas de ${PESTANAS[pestana].vista}`" @click="exportarCsv">Exportar CSV</button>
+        </div>
+      </div>
+
+      <!-- KPIs: sobre todo lo filtrado de la pestaña -->
+      <div class="kpis">
+        <div class="kpi">
+          <div class="kpi-et">Costo proyectado</div>
+          <div class="kpi-val mono">{{ actual.cargando ? '…' : pesos(sumas.proyectado) }}</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-et">Costo ejecutado</div>
+          <div class="kpi-val mono">{{ actual.cargando ? '…' : pesos(sumas.ejecutado) }}</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-et">Por ejecutar</div>
+          <div class="kpi-val mono">{{ actual.cargando ? '…' : pesos(sumas.porEjecutar) }}</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-et">Filas</div>
+          <div class="kpi-val mono">{{ actual.cargando ? '…' : fmtEntero(filtradas.length) }}</div>
+        </div>
+      </div>
+
+      <div v-if="pestana === 'total' && filtros.meses.length" class="alerta aviso nota-total">
+        Total no se parte por mes: muestra el costo completo de cada material que corre en esos meses.
+        Para el costo exacto de un mes, usa Semanal o Diaria.
+      </div>
+
+      <div class="tabla-envoltura">
+        <div v-if="actual.error" class="vacio">{{ actual.error }}</div>
+        <div v-else-if="actual.cargando" class="vacio">Cargando {{ PESTANAS[pestana].vista }}…</div>
+        <table v-else class="tabla tabla-inversion">
+          <thead>
+            <tr>
+              <th v-for="col in columnas" :key="col" :class="{ num: esNum(col) }" :title="col">{{ COLUMNAS_INV[col][0] }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="!filtradas.length">
+              <td :colspan="columnas.length" class="vacio">No hay filas con estos filtros.</td>
+            </tr>
+            <tr v-for="(r, i) in enPagina" :key="i">
+              <td v-for="col in columnas" :key="col" :class="esNum(col) ? 'mono num' : 'texto'">{{ celda(r, col) }}</td>
+            </tr>
+          </tbody>
+          <tfoot v-if="filtradas.length">
+            <tr>
+              <td :colspan="colsAntesDeSuma">Total</td>
+              <template v-for="col in columnas.slice(colsAntesDeSuma)" :key="col">
+                <td v-if="col === 'costo_proyectado'" class="mono num destacado">{{ pesos(sumas.proyectado) }}</td>
+                <td v-else-if="col === 'costo_ejecutado'" class="mono num destacado">{{ pesos(sumas.ejecutado) }}</td>
+                <td v-else></td>
+              </template>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <div v-if="!actual.cargando && !actual.error && paginas > 1" class="paginador">
+        <span class="mono">{{ rango }}</span>
+        <button type="button" class="btn" :disabled="pagina_ === 0" @click="pagina = pagina_ - 1">← Anterior</button>
+        <span class="mono">Página {{ pagina_ + 1 }} de {{ paginas }}</span>
+        <button type="button" class="btn" :disabled="pagina_ >= paginas - 1" @click="pagina = pagina_ + 1">Siguiente →</button>
+      </div>
+    </section>
+
+    <!-- Fecha de corte: solo ADMIN. Elegir y luego confirmar. -->
+    <div v-if="editorCorte" class="modal-fondo" @pointerdown.self="cerrarCorte">
+      <div class="modal" role="dialog" aria-labelledby="corte-titulo">
+        <h2 id="corte-titulo">Fecha de corte</h2>
+        <template v-if="editorCorte.paso === 'editar'">
+          <p>El costo ejecutado cuenta los días hasta esta fecha, incluida. Sin fecha fija, se usa la de hoy.</p>
+          <div class="campo">
+            <label for="corte-fecha">Ejecutado a</label>
+            <input id="corte-fecha" type="date" class="mono" v-model="editorCorte.fecha"
+                   @keydown.enter.prevent="proponerCorte(editorCorte.fecha)">
+          </div>
+          <div v-if="editorCorte.error" class="campo-error">{{ editorCorte.error }}</div>
+          <div class="modal-botones">
+            <button v-if="corte.valor" type="button" class="btn izq" @click="proponerCorte(null)">Volver a hoy</button>
+            <button type="button" class="btn" @click="cerrarCorte">Cancelar</button>
+            <button type="button" class="btn p" @click="proponerCorte(editorCorte.fecha)">Continuar</button>
+          </div>
+        </template>
+        <template v-else>
+          <p v-if="editorCorte.nuevo">
+            El ejecutado pasará a contar hasta el <strong class="mono">{{ fechaHumana(editorCorte.nuevo) }}</strong> y quedará fijo en esa fecha.
+          </p>
+          <p v-else>El ejecutado volverá a contar hasta <strong>hoy</strong> y avanzará solo cada día.</p>
+          <div class="alerta aviso">Cambia el costo ejecutado para todos los usuarios y en lo que BI lee de v_inversion_diaria.</div>
+          <div v-if="editorCorte.error" class="alerta error" style="margin-top:10px">{{ editorCorte.error }}</div>
+          <div class="modal-botones">
+            <button type="button" class="btn" :disabled="editorCorte.guardando" @click="editorCorte.paso = 'editar'">Volver</button>
+            <button type="button" class="btn p" :disabled="editorCorte.guardando" @click="guardarCorte">
+              {{ editorCorte.guardando ? 'Guardando…' : 'Sí, cambiar el corte' }}
+            </button>
+          </div>
+        </template>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+  <script src="config.js"></script>
+  <script src="js/comun.js"></script>
+  <script src="js/componentes.js"></script>
+  <script src="js/inversion.js"></script>
+</body>
+</html>

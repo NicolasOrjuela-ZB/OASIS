@@ -18,6 +18,7 @@
     <h1 class="titulo">Materiales</h1>
 
     <div v-if="errorCarga" class="alerta error" style="margin-bottom:14px">{{ errorCarga }}</div>
+    <div v-if="avisoPedido" class="alerta aviso" style="margin-bottom:14px">{{ avisoPedido }}</div>
 
     <section class="card">
       <div class="card-cab">
@@ -111,7 +112,7 @@
             <tr v-if="visibles.length === 0">
               <td colspan="14" class="vacio">No hay materiales con estos filtros.</td>
             </tr>
-            <tr v-for="r in visibles" :key="r._k" :data-k="r._k">
+            <tr v-for="r in visibles" :key="r._k" :data-k="r._k" :class="{ resaltada: r._k === resaltada }">
               <td class="pegada c0 calc mono" :title="tramosDe(r)">
                 <span v-if="!filtros.mercado" class="mk">{{ codigoMercado(compraDe(r).mercado_id) }}</span>{{ codigoMaterial(r) }}<span v-if="r.grupo_tramo" class="tramo">⇄</span>
               </td>

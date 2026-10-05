@@ -19,8 +19,6 @@ const FECHAS = ['fecha_inicio', 'fecha_fin'];
 const SIN_SUB = 0;  // opción "Sin sub campaña" del filtro
 const DIAS_SEMANA = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
 
-const fmtPesos = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
-
 // ------------------------------------------------------------------ Filas
 
 let contadorMateriales = 0;
@@ -84,6 +82,7 @@ async function iniciar() {
       usuario,
       cargando: true,
       errorCarga: '',
+      avisoPedido: '',
       mercados: [],
       misMercadoIds: [],
       proveedores: [],
@@ -96,6 +95,7 @@ async function iniciar() {
       costos: {},              // AAAA-MM -> { cargando, material: Map, compra: Map, error }
       genCostos: 0,            // sube al invalidar: descarta cargas que terminan tarde
       globo: null,             // ayuda flotante: { x, y, lineas, img }
+      resaltada: null,         // fila que pidió Alertas (_k)
       borrador: null,          // material nuevo, o partición, en el panel lateral
     }),
 
@@ -332,7 +332,8 @@ async function iniciar() {
     },
 
     watch: {
-      'filtros.mercado'() {
+      'filtros.mercado'(id) {
+        guardarMercadoActivo(id ? this.codigoMercado(id) : '');
         const validos = new Set(this.opcionesProveedor.map(o => o.valor));
         this.filtros.proveedores = this.filtros.proveedores.filter(id => validos.has(id));
         const subs = new Set(this.opcionesSubCampana.map(o => o.valor));
@@ -507,24 +508,9 @@ async function iniciar() {
           ['Fecha fin', (r) => r._orig.fecha_fin],
           ['Taxonomía', (r) => r.taxonomia],
         ];
-        // Punto y coma: Excel en español lo abre en columnas; Sheets lo detecta solo.
-        const celda = (v) => {
-          const t = v === null || v === undefined ? '' : String(v);
-          return /[";\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
-        };
-        const lineas = [columnas.map(([t]) => t).join(';')];
-        for (const r of this.visibles) {
-          const c = this.compraDe(r);
-          lineas.push(columnas.map(([, f]) => celda(f(r, c))).join(';'));
-        }
-        // BOM: sin él, Excel muestra mal las tildes.
-        const blob = new Blob(['\uFEFF' + lineas.join('\r\n')], { type: 'text/csv;charset=utf-8' });
         const m = this.mercadosPorId.get(this.filtros.mercado);
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `materiales_${m ? m.codigo : 'todos'}_${new Date().toISOString().slice(0, 10)}.csv`;
-        a.click();
-        URL.revokeObjectURL(a.href);
+        descargarCsv(`materiales_${m ? m.codigo : 'todos'}_${hoyIso()}.csv`,
+          columnas.map(([t, f]) => [t, (r) => f(r, this.compraDe(r))]), this.visibles);
       },
 
       // ---------------------------------------------------------------- Panel lateral
@@ -689,7 +675,8 @@ async function iniciar() {
         if (this.vista === 'calendario') this.cargarCostos(this.calMes);
       },
 
-      // Costo del día de cada material y de cada compra, desde v_inversion_diaria.
+      // Costo del día de cada material y de cada compra, desde v_inversion_diaria
+      // (por fn_inversion_diaria: leída directo, con RLS pasa el límite de 8 s).
       async cargarCostos(mes) {
         if (!mes || this.costos[mes]) return;
         const gen = this.genCostos;
@@ -698,7 +685,7 @@ async function iniciar() {
         const [y, m] = mes.split('-').map(Number);
         const fin = `${mes}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
         try {
-          const filas = await traerTodo(() => sb.from('v_inversion_diaria')
+          const filas = await traerTodo(() => sb.rpc('fn_inversion_diaria', {}, { get: true })
             .select('site, id, id_ejecucion, date, costo_proyectado')
             .gte('date', `${mes}-01`).lte('date', fin)
             .order('site').order('id_ejecucion').order('date'));
@@ -754,6 +741,20 @@ async function iniciar() {
 
       // ---------------------------------------------------------------- Carga
 
+      // Desde Alertas: la fila resaltada y en pantalla; si se sale de su compra,
+      // con el panel de partición abierto (LECTURA solo la ve).
+      async irAFilaPedida() {
+        const p = filaPedida();
+        if (!p.material) return;
+        const r = this.filas.find(x => x.id === p.material);
+        if (!r) { this.avisoPedido = 'Ese material ya no está o no es de tus mercados.'; return; }
+        this.resaltada = r._k;
+        await nextTick();
+        const tr = document.querySelector(`#app tr[data-k="${r._k}"]`);
+        if (tr) tr.scrollIntoView({ block: 'center' });
+        if (p.partir && !this.soloLectura && this.fuera(r)) this.abrirPartir(r);
+      },
+
       ordenarFilas() {
         const cmp = (a, b) => {
           const ca = this.compraDe(a), cb = this.compraDe(b);
@@ -785,11 +786,7 @@ async function iniciar() {
           this.filas = materiales.map(m => desdeBaseMaterial(m, tax.get(m.id)));
           this.ordenarFilas();
 
-          if (this.misMercados.length === 1) this.filtros.mercado = this.misMercados[0].id;
-          else {
-            const propio = propios.map(p => p.mercado_id).find(id => this.misMercadoIds.includes(id));
-            if (propio) this.filtros.mercado = propio;
-          }
+          this.filtros.mercado = mercadoInicial(this.misMercados, propios.map(p => p.mercado_id));
           if (!this.misMercados.length) {
             this.errorCarga = 'Tu usuario no tiene mercados asignados. Pide a un administrador que te los asigne.';
           }
@@ -799,6 +796,7 @@ async function iniciar() {
         } finally {
           this.cargando = false;
         }
+        this.irAFilaPedida();
       },
     },
 

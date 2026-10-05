@@ -301,12 +301,14 @@ async function iniciar() {
       usuario,
       cargando: true,
       errorCarga: '',
+      avisoPedido: '',
       mercados: [],
       misMercadoIds: [],
       campanas: [],
       proveedores: [],
       filas: [],
       filtros: { mercado: '', meses: [], proveedores: [], tiposCosto: [] },
+      resaltada: null,         // fila que pidió Alertas (_k)
       borrador: null,         // compra nueva en el panel lateral
     }),
 
@@ -427,7 +429,8 @@ async function iniciar() {
     },
 
     watch: {
-      'filtros.mercado'() {
+      'filtros.mercado'(id) {
+        guardarMercadoActivo(id ? this.codigoMercado(id) : '');
         const validos = new Set(this.opcionesProveedor.map(o => o.valor));
         this.filtros.proveedores = this.filtros.proveedores.filter(id => validos.has(id));
       },
@@ -660,6 +663,18 @@ async function iniciar() {
 
       // ---------------------------------------------------------------- Carga
 
+      // Desde Alertas: la compra resaltada y en pantalla.
+      async irAFilaPedida() {
+        const p = filaPedida();
+        if (!p.compra) return;
+        const r = this.filas.find(x => x.id === p.compra);
+        if (!r) { this.avisoPedido = 'Esa compra ya no está o no es de tus mercados.'; return; }
+        this.resaltada = r._k;
+        await nextTick();
+        const tr = document.querySelector(`#app tr[data-k="${r._k}"]`);
+        if (tr) tr.scrollIntoView({ block: 'center' });
+      },
+
       async cargar() {
         try {
           const [mercados, mis, propios, campanas, proveedores, compras] = await Promise.all([
@@ -683,12 +698,7 @@ async function iniciar() {
             return r;
           });
 
-          // Mercado por defecto: el único que tenga, o el primero asignado (un ADMIN ve todos).
-          if (this.misMercados.length === 1) this.filtros.mercado = this.misMercados[0].id;
-          else {
-            const propio = propios.map(p => p.mercado_id).find(id => this.misMercadoIds.includes(id));
-            if (propio) this.filtros.mercado = propio;
-          }
+          this.filtros.mercado = mercadoInicial(this.misMercados, propios.map(p => p.mercado_id));
           if (!this.misMercados.length) {
             this.errorCarga = 'Tu usuario no tiene mercados asignados. Pide a un administrador que te los asigne.';
           }
@@ -698,6 +708,7 @@ async function iniciar() {
         } finally {
           this.cargando = false;
         }
+        this.irAFilaPedida();
       },
     },
 
