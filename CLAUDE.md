@@ -47,7 +47,9 @@ Vistas: `v_materiales` (nivel material, con taxonomía), `v_inversion_diaria`, `
 
 **Valor total.** `compras.valor_total_manual`: false = tarifa neta × cantidad, lo recalcula la interfaz; true = escrito a mano (marcado cuando difiere más de $1 de la fórmula, al migrar y al cargar). `descuento_pct` es fracción 0–1.
 
-Cambios de Fase 2 sobre el esquema: `sql/fase2_compras.sql`.
+**Tramos.** Cuando una campaña cruza dos compras del mismo soporte se parte en un material por compra; los tramos comparten `materiales.grupo_tramo` (uuid, nulo si no está partido). La interfaz crea y parte materiales con `fn_guardar_tramos(material_id, datos, tramos)`: una transacción, con permisos del usuario (RLS aplica), que asigna la siguiente letra libre de cada compra y rechaza tramos fuera del periodo. Mismo soporte = mismo mercado, proveedor, ubicación y tipo de costo. No hay CHECK de periodo en la tabla: el Sheets todavía trae materiales fuera de su compra y la carga no debe fallar.
+
+Cambios de Fase 2 sobre el esquema: `sql/fase2_compras.sql`, `sql/fase2_materiales.sql`.
 
 ## Reglas de negocio — no cambiar sin consultar
 
@@ -100,15 +102,19 @@ El script localiza encabezados por nombre, no por posición. Si falta uno, se de
 
 ## Estado y pendientes
 
-**Hecho:** esquema, vistas de cálculo, carga en vivo desde Sheets, validación contra Sheets, repositorio, corrección de vocabulario, autenticación y RLS para roles internos.
+**Hecho:** esquema, vistas de cálculo, carga en vivo desde Sheets, validación contra Sheets, repositorio, corrección de vocabulario, autenticación y RLS para roles internos. Pantallas Compras y Materiales terminadas y probadas.
 
 **RLS:** activo con 18 políticas para roles internos (PLANNING, ZB, LECTURA, ADMIN), definidas en `rls_fase2.sql`. Catálogos: lectura para internos, escritura ADMIN. `compras` y `materiales`: según `fn_mis_mercados()`; LECTURA no escribe. `usuarios` y `usuario_mercados`: cada uno lo suyo, ADMIN todo. Las vistas tienen `security_invoker` y `anon` no tiene acceso. AGENCIA y PROVEEDOR no tienen políticas: sin acceso hasta la Fase 3. `postgres` salta RLS, así que la carga y BI no se ven afectados.
 
-**Fase 2 (en curso):** interfaz interna para planning y ZB. Se construye con Claude Code siguiendo `DISENO.md` (pantallas Compras, Materiales, Consulta, Inversión y Alertas). El portal de proveedores pasa a la Fase 3.
+**Fase 2 (en curso):** interfaz interna para planning y ZB. Se construye con Claude Code siguiendo `DISENO.md`. Compras y Materiales están terminadas; quedan Consulta, Inversión y Alertas. El portal de proveedores pasa a la Fase 3.
 
-**Datos por limpiar en el Sheets** (trabajo del equipo, no del sistema): 31 materiales sin fechas, 17 con sub campaña `ODM` fuera del glosario, 92 materiales fuera del periodo de su compra (el equipo los está revisando con el detalle de patrones), proveedores duplicados (`JCDECAUX`/`JCDX`, `PUBLICIDAD BARRANQUILLA`/`PUBLICIDAD BQUILLA`).
+**Datos por limpiar en el Sheets** (trabajo del equipo, no del sistema), según la carga del 5 de octubre de 2026: 1 material sin fechas (053-A), 109 materiales fuera del periodo de su compra (se resuelven con «Partir →» en Materiales), 12 compras sin materiales, proveedores duplicados (`JCDECAUX`/`JCDX`, `PUBLICIDAD BARRANQUILLA`/`PUBLICIDAD BQUILLA`).
 
-**Decisiones abiertas:** días de montaje entre campañas, reparto por share of voice, evidencias con copia propia, identidad individual de proveedores, campo que enlace los tramos de una misma campaña partida entre compras.
+**Riesgo del Sheets:** en Flow el ID es `=TEXT(ROW()-10,"000")` y en Tracking el "ID FLOW" se escribe a mano. Ordenar o insertar filas en Flow renumera las compras y deja materiales colgados de otra compra sin ningún aviso. Antes de cargar, comparar con `--dry-run` cuántas compras cambian de ubicación.
+
+**Tarea del día del corte** (cuando el Sheets se jubile y los 109 fuera de periodo estén limpios): agregar un trigger en `materiales` que haga cumplir en la base que el material esté dentro del periodo de su compra, al insertar o actualizar el material y al cambiar las fechas de la compra. Hoy esa regla solo vive en la interfaz y en `fn_guardar_tramos`; no se pone antes porque haría fallar `cargar_oasis.py`.
+
+**Decisiones abiertas:** días de montaje entre campañas, reparto por share of voice, evidencias con copia propia, identidad individual de proveedores.
 
 ## Contexto del usuario
 
