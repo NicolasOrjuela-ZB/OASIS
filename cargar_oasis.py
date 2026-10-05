@@ -265,11 +265,12 @@ class Carga:
         self.glo_ini,  self.GLO  = localizar(wb["Glosario"], 3, "MERCADO", GLOSARIO_COLS, "Glosario")
         print(f"  Flow: datos desde fila {self.flow_ini} | Tracking: desde fila {self.trk_ini} | Glosario: desde fila {self.glo_ini}")
 
-        self.cur.execute("SELECT id FROM mercados WHERE codigo = %s", (mercado_codigo,))
+        self.cur.execute("SELECT id, campana_ooh_id FROM mercados WHERE codigo = %s", (mercado_codigo,))
         fila = self.cur.fetchone()
         if not fila:
             sys.exit(f"El mercado {mercado_codigo} no existe en la tabla mercados.")
-        self.mercado_id = fila[0]
+        # La campaña de toda compra es la campaña OOH del mercado (mercados.campana_ooh_id).
+        self.mercado_id, self.campana_ooh_id = fila
 
     # -- campañas ----------------------------------------------------------
 
@@ -358,15 +359,40 @@ class Carga:
                 self.avisos["compra con fechas invertidas"].append(codigo)
                 continue
 
-            campana_id = None
+            campana_sheets = None
             for cand in extraer_campana(texto(g("campana"))):
                 if cand in self.mapa_campanas:
-                    campana_id = self.mapa_campanas[cand]
+                    campana_sheets = self.mapa_campanas[cand]
                     break
-            if not campana_id:
-                self.avisos["campaña no encontrada en glosario"].append(
-                    f"{codigo}: {texto(g('campana'))}")
+
+            if self.campana_ooh_id:
+                # La campaña la fija el mercado. Si el Sheets trae otra, se avisa
+                # y se usa la del mercado.
+                campana_id = self.campana_ooh_id
+                if campana_sheets != self.campana_ooh_id:
+                    self.avisos["compra con otra campaña en el Sheets (se usa la OOH del mercado)"].append(
+                        f"{codigo}: {texto(g('campana'))}")
+            else:
+                campana_id = campana_sheets
+                if not campana_id:
+                    self.avisos["campaña no encontrada en glosario"].append(
+                        f"{codigo}: {texto(g('campana'))}")
+                    continue
+
+            # El descuento llega como fracción (0,15 = 15 %). Un 15 escrito a mano
+            # violaría compras_desc y tumbaría toda la carga: se salta la compra.
+            descuento = numero(g("descuento_pct")) or 0
+            if not 0 <= descuento <= 1:
+                self.avisos["compra con descuento fuera de 0–1 (no se cargó)"].append(
+                    f"{codigo}: {descuento}")
                 continue
+
+            # valor_total_manual: el valor no sale de tarifa neta × cantidad.
+            # Mismo criterio que sql/fase2_compras.sql.
+            tarifa_neta = numero(g("tarifa_neta")) or 0
+            cantidad = int(numero(g("cantidad")) or 1)
+            valor_total = numero(g("valor_total")) or 0
+            valor_total_manual = abs(valor_total - round(tarifa_neta * cantidad, 2)) > 1
 
             prov = (texto(g("proveedor")) or "").upper()
             proveedor_id = self.mapa_proveedores.get(prov)
@@ -380,9 +406,9 @@ class Carga:
                 texto(g("tipo_compra")), texto(g("medio")), texto(g("tipo_costo")),
                 texto(g("formato")), texto(g("ubicacion")), texto(g("ciudad")),
                 numero(g("trafico")), texto(g("tiempo")),
-                numero(g("tarifa_bruta")) or 0, numero(g("descuento_pct")) or 0,
-                numero(g("tarifa_neta")) or 0, int(numero(g("cantidad")) or 1),
-                numero(g("nro_semanas")), numero(g("valor_total")) or 0,
+                numero(g("tarifa_bruta")) or 0, descuento,
+                tarifa_neta, cantidad,
+                numero(g("nro_semanas")), valor_total, valor_total_manual,
                 fi, ff,
             ))
 
@@ -391,9 +417,10 @@ class Carga:
                 mercado_id, codigo, cliente, campana_id, proveedor_id,
                 tipo_compra, medio, tipo_costo, formato, ubicacion, ciudad,
                 trafico, tiempo, tarifa_bruta, descuento_pct, tarifa_neta,
-                cantidad, nro_semanas, valor_total, fecha_inicio, fecha_fin)
+                cantidad, nro_semanas, valor_total, valor_total_manual,
+                fecha_inicio, fecha_fin)
             VALUES (%s,%s,%s,%s,%s,%s::tipo_compra_enum,%s::medio_enum,
-                    %s::tipo_costo_enum,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    %s::tipo_costo_enum,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT (mercado_id, codigo) DO UPDATE SET
                 cliente       = EXCLUDED.cliente,
                 campana_id    = EXCLUDED.campana_id,
@@ -412,6 +439,7 @@ class Carga:
                 cantidad      = EXCLUDED.cantidad,
                 nro_semanas   = EXCLUDED.nro_semanas,
                 valor_total   = EXCLUDED.valor_total,
+                valor_total_manual = EXCLUDED.valor_total_manual,
                 fecha_inicio  = EXCLUDED.fecha_inicio,
                 fecha_fin     = EXCLUDED.fecha_fin,
                 actualizado_en = now()
