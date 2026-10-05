@@ -1,0 +1,159 @@
+/* Tabla editable, filtros y KPIs. Patrón compartido por Compras y Materiales. */
+
+/* ---------------------------------------------------------------- Filtros */
+
+.filtros {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 240px));
+  gap: 0 14px;
+  padding: 0 14px 14px;
+  border-bottom: 1px solid var(--rule);
+}
+@media (max-width: 760px) {
+  .filtros { grid-template-columns: 1fr 1fr; }
+}
+
+/* ---------------------------------------------------------------- KPIs */
+
+.kpis {
+  display: flex;
+  border-bottom: 1px solid var(--rule);
+}
+.kpi {
+  padding: 10px 18px;
+  border-right: 1px solid var(--rule-soft);
+  min-width: 170px;
+}
+.kpi-et {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+.kpi-val { font-size: 20px; font-weight: 500; margin-top: 2px; }
+
+.estado-global { font-size: 11px; color: var(--muted); }
+.estado-global.ok   { color: var(--ok); }
+.estado-global.prop { color: var(--y-deep); }
+.estado-global.err  { color: var(--err); }
+
+/* ---------------------------------------------------------------- Tabla */
+
+.tabla-envoltura {
+  overflow: auto;
+  max-height: calc(100vh - 330px);
+  min-height: 240px;
+  margin-top: 14px;
+  border-top: 1px solid var(--rule);
+}
+
+.tabla {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+  width: max-content;
+  min-width: 100%;
+}
+
+.tabla th {
+  background: var(--k);
+  color: #F5F3EC;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: left;
+  padding: 8px 10px;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.tabla th.calc { color: var(--y); }
+.tabla th.num { text-align: right; }
+
+.tabla td {
+  padding: 0;
+  border-bottom: 1px solid var(--rule-soft);
+  white-space: nowrap;
+  background: var(--surface);
+  height: 31px;
+}
+.tabla td.calc, .tabla td.mono { padding: 6px 10px; }
+.tabla td.calc { background: var(--calc); color: var(--ink-soft); }
+.tabla td.num, .tabla td .n { text-align: right; }
+.tabla td.mono, .tabla .n, .tabla .fecha {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Valor heredado distinto a la fórmula */
+.tabla td.calc.obs { background: var(--y-wash); color: var(--y-deep); cursor: help; }
+
+/* Error en la celda: fondo rojo claro y línea inferior roja */
+.tabla td.err {
+  background: var(--err-wash);
+  box-shadow: inset 0 -2px 0 var(--err);
+  cursor: help;
+}
+
+/* Columnas pegajosas */
+.tabla .pegada { position: sticky; z-index: 1; }
+.tabla th.pegada { z-index: 3; }
+.tabla .c0 { left: 0; width: 92px; min-width: 92px; max-width: 92px; }
+.tabla .c1 { left: 92px; border-right: 1px solid var(--rule); }
+.tabla td.c0 .mk { color: var(--muted); margin-right: 6px; font-size: 10px; }
+
+/* Inputs dentro de la celda */
+.tabla input, .tabla select {
+  border: 0;
+  background: transparent;
+  height: 31px;
+  padding: 0 9px;
+  font: inherit;
+  color: var(--ink);
+  border-radius: 0;
+  width: 120px;
+  display: block;
+}
+.tabla select { padding-right: 4px; cursor: pointer; }
+.tabla input:focus, .tabla select:focus {
+  outline: none;
+  background: var(--y-wash);
+}
+.tabla input:disabled, .tabla select:disabled { color: var(--ink); opacity: 1; cursor: default; }
+.tabla .ancho-xs { width: 78px; }
+.tabla .ancho-s  { width: 110px; }
+.tabla .ancho-m  { width: 160px; }
+.tabla .ancho-l  { width: 240px; }
+.tabla .n        { width: 130px; }
+.tabla .n.ancho-xs { width: 78px; }
+.tabla .fecha    { width: 128px; }
+
+.tabla tr.nueva td:not(.calc):not(.err) { background: #FFFDF6; }
+
+/* Estado de guardado por fila */
+.tabla .estado-col { min-width: 108px; padding: 0 8px; text-align: left; }
+.tabla th.estado-col { padding: 8px; }
+.tabla .descartar {
+  border: 0; background: none; color: var(--muted);
+  font: 700 15px var(--f-cuerpo); cursor: pointer; padding: 0 4px; margin-left: 4px;
+}
+.tabla .descartar:hover { color: var(--err); }
+
+/* Fila de total */
+.tabla tfoot td {
+  background: var(--k);
+  color: #F5F3EC;
+  font-weight: 700;
+  padding: 8px 10px;
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  border-bottom: 0;
+}
+.tabla tfoot td.pegada { z-index: 3; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+.tabla tfoot td.destacado { color: var(--y); }
+
+.vacio { padding: 28px 14px; color: var(--muted); text-align: center; }

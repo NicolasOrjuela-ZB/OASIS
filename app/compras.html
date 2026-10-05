@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OASIS · Compras</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sofia+Sans+Extra+Condensed:wght@700;800&family=Mulish:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="css/oasis.css">
+  <link rel="stylesheet" href="css/tabla.css">
+</head>
+<body>
+  <header class="topbar" id="barra"></header>
+
+  <main class="pagina" id="app" v-cloak>
+    <div class="eyebrow">{{ eyebrow }}</div>
+    <h1 class="titulo">Compras</h1>
+
+    <div v-if="errorCarga" class="alerta error" style="margin-bottom:14px">{{ errorCarga }}</div>
+
+    <section class="card">
+      <div class="card-cab">
+        <h2>Flow</h2>
+        <span class="estado-global mono" :class="estadoGlobal.clase">{{ estadoGlobal.texto }}</span>
+        <button class="btn p" type="button" style="margin-left:auto"
+                :disabled="!puedeCrear" :title="motivoNoCrear" @click="nuevaCompra">Nueva compra</button>
+      </div>
+
+      <!-- Filtros -->
+      <div class="filtros">
+        <div class="campo">
+          <label for="f-mercado">Mercado</label>
+          <select id="f-mercado" v-model="filtros.mercado" :disabled="misMercados.length === 1">
+            <option v-if="misMercados.length > 1" value="">Todos</option>
+            <option v-for="m in misMercados" :key="m.id" :value="m.id">{{ m.codigo }} · {{ m.nombre }}</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label for="f-mes">Mes</label>
+          <select id="f-mes" v-model="filtros.mes">
+            <option value="">Todos</option>
+            <option v-for="m in meses" :key="m" :value="m">{{ nombreMes(m) }}</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label for="f-proveedor">Proveedor</label>
+          <select id="f-proveedor" v-model="filtros.proveedor">
+            <option value="">Todos</option>
+            <option v-for="p in proveedoresFiltro" :key="p.id" :value="p.id">{{ p.etiqueta }}</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label for="f-tipo">Tipo de costo</label>
+          <select id="f-tipo" v-model="filtros.tipoCosto">
+            <option value="">Todos</option>
+            <option v-for="t in ENUMS.tipo_costo" :key="t" :value="t">{{ t }}</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpis">
+        <div class="kpi">
+          <div class="kpi-et">Compras</div>
+          <div class="kpi-val mono">{{ fmtEntero(visibles.length) }}</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-et">Valor total</div>
+          <div class="kpi-val mono">{{ fmtNumero(sumaVisible) }}</div>
+        </div>
+      </div>
+
+      <div v-if="observadasVisibles > 0" class="alerta aviso" style="margin:14px 14px 0">
+        {{ observadasVisibles }} {{ observadasVisibles === 1 ? 'compra tiene' : 'compras tienen' }}
+        tarifa neta o valor total distintos a la fórmula (celdas en amarillo; pasa el cursor para ver el detalle).
+        Se conserva el valor guardado hasta que edites tarifa bruta, descuento o cantidad de esa fila.
+      </div>
+
+      <!-- Tabla -->
+      <div class="tabla-envoltura">
+        <div v-if="cargando" class="vacio">Cargando compras…</div>
+        <table v-else class="tabla" @focusout="alSalirDeCelda">
+          <thead>
+            <tr>
+              <th class="pegada c0 calc">Código</th>
+              <th class="pegada c1">Cliente</th>
+              <th>Campaña</th>
+              <th>Tipo compra</th>
+              <th>Proveedor</th>
+              <th>Medio</th>
+              <th>Tipo costo</th>
+              <th>Formato</th>
+              <th>Ubicación</th>
+              <th>Ciudad</th>
+              <th class="num">Tarifa bruta</th>
+              <th class="num">Desc. %</th>
+              <th class="num calc">Tarifa neta</th>
+              <th class="num">Cantidad</th>
+              <th class="num">Nro. sem.</th>
+              <th class="num calc">Valor total</th>
+              <th class="num">Fecha inicio</th>
+              <th class="num">Fecha fin</th>
+              <th class="estado-col"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="visibles.length === 0">
+              <td colspan="19" class="vacio">No hay compras con estos filtros.</td>
+            </tr>
+            <tr v-for="r in visibles" :key="r._k" :data-k="r._k" @pointerdown="filaActiva = r._k" @focusin="filaActiva = r._k" :class="{ nueva: !r.id }">
+              <td class="pegada c0 calc mono num">
+                <span v-if="!filtros.mercado" class="mk">{{ codigoMercado(r.mercado_id) }}</span>{{ r.codigo }}
+              </td>
+              <td class="pegada c1" :class="claseErr(r, 'cliente')" :title="msgErr(r, 'cliente')">
+                <input v-model.trim="r.cliente" :disabled="soloLectura" list="dl-clientes" class="ancho-s">
+              </td>
+              <td :class="claseErr(r, 'campana_id')" :title="msgErr(r, 'campana_id')">
+                <select v-model="r.campana_id" :disabled="soloLectura" class="ancho-l">
+                  <option :value="null"></option>
+                  <option v-for="c in opcionesCampana(r)" :key="c.id" :value="c.id">{{ c.nombre_unico }}</option>
+                </select>
+              </td>
+              <td :class="claseErr(r, 'tipo_compra')" :title="msgErr(r, 'tipo_compra')">
+                <select v-model="r.tipo_compra" :disabled="soloLectura">
+                  <option :value="null"></option>
+                  <option v-for="t in ENUMS.tipo_compra" :key="t" :value="t">{{ t }}</option>
+                </select>
+              </td>
+              <td :class="claseErr(r, 'proveedor_id')" :title="msgErr(r, 'proveedor_id')">
+                <select v-model="r.proveedor_id" :disabled="soloLectura" class="ancho-m">
+                  <option :value="null"></option>
+                  <option v-for="p in proveedoresDe(r)" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+                </select>
+              </td>
+              <td :class="claseErr(r, 'medio')" :title="msgErr(r, 'medio')">
+                <select v-model="r.medio" :disabled="soloLectura">
+                  <option :value="null"></option>
+                  <option v-for="t in ENUMS.medio" :key="t" :value="t">{{ t }}</option>
+                </select>
+              </td>
+              <td :class="claseErr(r, 'tipo_costo')" :title="msgErr(r, 'tipo_costo')">
+                <select v-model="r.tipo_costo" :disabled="soloLectura">
+                  <option :value="null"></option>
+                  <option v-for="t in ENUMS.tipo_costo" :key="t" :value="t">{{ t }}</option>
+                </select>
+              </td>
+              <td :class="claseErr(r, 'formato')" :title="msgErr(r, 'formato')">
+                <input v-model.trim="r.formato" :disabled="soloLectura" list="dl-formatos" class="ancho-m">
+              </td>
+              <td :class="claseErr(r, 'ubicacion')" :title="msgErr(r, 'ubicacion')">
+                <input v-model.trim="r.ubicacion" :disabled="soloLectura" class="ancho-l">
+              </td>
+              <td :class="claseErr(r, 'ciudad')" :title="msgErr(r, 'ciudad')">
+                <input v-model.trim="r.ciudad" :disabled="soloLectura" list="dl-ciudades" class="ancho-s">
+              </td>
+              <td :class="claseErr(r, 'tarifa_bruta')" :title="msgErr(r, 'tarifa_bruta')">
+                <celda-num v-model="r.tarifa_bruta" :disabled="soloLectura" :decimales="2"
+                           @editado="recalcular(r, 'neta')"></celda-num>
+              </td>
+              <td :class="claseErr(r, 'descuento')" :title="msgErr(r, 'descuento')">
+                <celda-num v-model="r.descuento" :disabled="soloLectura" :decimales="2" class="ancho-xs"
+                           @editado="recalcular(r, 'neta')"></celda-num>
+              </td>
+              <td class="calc mono num" :class="{ obs: obs.get(r._k).neta }" :title="obs.get(r._k).neta">{{ fmtNumero(r.tarifa_neta) }}</td>
+              <td :class="claseErr(r, 'cantidad')" :title="msgErr(r, 'cantidad')">
+                <celda-num v-model="r.cantidad" :disabled="soloLectura" :decimales="0" class="ancho-xs"
+                           @editado="recalcular(r, 'total')"></celda-num>
+              </td>
+              <td :class="claseErr(r, 'nro_semanas')" :title="msgErr(r, 'nro_semanas')">
+                <celda-num v-model="r.nro_semanas" :disabled="soloLectura" :decimales="2" class="ancho-xs"></celda-num>
+              </td>
+              <td class="calc mono num" :class="{ obs: obs.get(r._k).total }" :title="obs.get(r._k).total">{{ fmtNumero(r.valor_total) }}</td>
+              <td :class="claseErr(r, 'fecha_inicio')" :title="msgErr(r, 'fecha_inicio')">
+                <input type="date" v-model="r.fecha_inicio" :disabled="soloLectura" class="fecha">
+              </td>
+              <td :class="claseErr(r, 'fecha_fin')" :title="msgErr(r, 'fecha_fin')">
+                <input type="date" v-model="r.fecha_fin" :disabled="soloLectura" class="fecha">
+              </td>
+              <td class="estado-col">
+                <span v-if="r._estado" class="pill" :class="r._estado.clase" :title="r._estado.detalle">{{ r._estado.texto }}</span>
+                <button v-if="!r.id && !r._guardando" class="descartar" type="button" title="Descartar esta fila sin guardar"
+                        @mousedown.prevent @click="descartar(r)">×</button>
+              </td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td class="pegada c0">Total</td>
+              <td class="pegada c1"></td>
+              <td colspan="13"></td>
+              <td class="mono num destacado">{{ fmtNumero(sumaVisible) }}</td>
+              <td colspan="3"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
+
+    <datalist id="dl-clientes"><option v-for="v in sugerencias.cliente" :key="v" :value="v"></option></datalist>
+    <datalist id="dl-formatos"><option v-for="v in sugerencias.formato" :key="v" :value="v"></option></datalist>
+    <datalist id="dl-ciudades"><option v-for="v in sugerencias.ciudad" :key="v" :value="v"></option></datalist>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+  <script src="config.js"></script>
+  <script src="js/comun.js"></script>
+  <script src="js/compras.js"></script>
+</body>
+</html>
