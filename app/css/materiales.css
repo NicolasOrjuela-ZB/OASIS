@@ -1,0 +1,194 @@
+/* Materiales: lo que no comparte con Compras. Fuente de verdad: DISENO.md */
+
+.card-cab .acciones-cab { margin-left: auto; display: flex; gap: 10px; }
+
+/* Seis filtros: mercado, mes, proveedor, sub campaña, tipo de costo, buscador */
+.filtros.filtros-materiales { grid-template-columns: repeat(6, minmax(140px, 220px)); }
+@media (max-width: 1200px) {
+  .filtros.filtros-materiales { grid-template-columns: repeat(3, minmax(140px, 1fr)); }
+}
+@media (max-width: 760px) {
+  .filtros.filtros-materiales { grid-template-columns: 1fr 1fr; }
+}
+.filtros input[type="search"].activo { border-color: var(--k); font-weight: 700; }
+
+.kpi-val.kpi-err { color: var(--err); }
+
+/* ---------------------------------------------------------------- Tabla */
+
+.tabla-materiales .c1, .calendario .c1 { width: 240px; min-width: 240px; max-width: 240px; }
+.tabla .compra-col { overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+.tabla td.c0 .tramo { color: var(--y-deep); margin-left: 6px; font-size: 11px; cursor: help; }
+
+.tabla td.taxonomia { max-width: 260px; overflow: hidden; text-overflow: ellipsis; font-size: 10.5px; cursor: help; }
+
+.tabla .abrir {
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 700;
+  padding: 0 8px 0 2px;
+}
+.tabla .abrir:hover { color: var(--ink); }
+
+.tabla td.miniatura-col { padding: 4px 10px; text-align: center; min-width: 120px; }
+.tabla td.miniatura-col img {
+  display: block;
+  height: 64px;
+  width: 100px;
+  object-fit: cover;
+  margin: 0 auto;
+  border: 1px solid var(--rule);
+  background: var(--surface);
+}
+.tabla td.miniatura-col .carpeta { color: var(--muted); display: inline-flex; }
+.tabla td.miniatura-col .carpeta:hover { color: var(--ink); }
+
+.tabla .partir { white-space: nowrap; padding: 0 9px 0 0; font-size: 11px; color: var(--err); }
+.tabla .partir:hover { color: var(--ink); }
+
+.tabla .estado-fila { display: flex; align-items: center; gap: 6px; }
+
+/* ---------------------------------------------------------------- Calendario */
+
+.calendario-zona .tabla-envoltura { margin-top: 0; }
+.cal-barra {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  flex-wrap: wrap;
+}
+.cal-barra .flecha { padding: 5px 10px; }
+.cal-mes {
+  font-family: var(--f-titulo);
+  font-weight: 800;
+  font-size: 22px;
+  text-transform: uppercase;
+  min-width: 110px;
+  text-align: center;
+}
+.cal-nota { font-size: 11px; color: var(--muted); }
+.cal-leyenda { margin-left: auto; display: flex; gap: 16px; font-size: 11.5px; color: var(--ink-soft); align-items: center; }
+.cal-leyenda span { display: inline-flex; align-items: center; gap: 6px; }
+.muestra { display: inline-block; width: 14px; height: 14px; border: 1px solid var(--rule); }
+
+.calendario th.dia {
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  padding: 4px 0;
+  text-align: center;
+  font-family: var(--f-mono);
+  font-size: 9.5px;
+  letter-spacing: 0;
+  line-height: 1.25;
+}
+.calendario th.dia span { display: block; }
+.calendario th.dia.finde { background: #26241E; }
+.calendario td.dia {
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  height: 30px;
+  border-right: 1px solid var(--rule-soft);
+}
+.calendario td.dia.finde { background: #F8F6F0; }
+.calendario td.dia.activo, .muestra.activo { background: var(--y); }
+.calendario td.dia.compartido, .muestra.compartido {
+  background: repeating-linear-gradient(135deg, var(--y) 0 4px, #D6D1C3 4px 8px);
+}
+.calendario td.dia:hover { box-shadow: inset 0 0 0 2px var(--k); }
+
+/* ---------------------------------------------------------------- Ayuda flotante */
+
+.globo {
+  position: fixed;
+  z-index: 70;
+  background: var(--k);
+  color: #F5F3EC;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  max-width: 300px;
+  pointer-events: none;
+}
+.globo .globo-tit { font-weight: 700; color: var(--y); font-family: var(--f-mono); }
+.globo img { display: block; max-width: 280px; max-height: 280px; background: var(--surface); }
+
+/* ---------------------------------------------------------------- Panel */
+
+.panel-cuerpo .resultados {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  border: 1px solid var(--rule);
+  max-height: 360px;
+  overflow: auto;
+}
+.resultados li {
+  display: grid;
+  grid-template-columns: 54px 1fr auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--rule-soft);
+  cursor: pointer;
+  font-size: 12.5px;
+}
+.resultados li.activo { background: var(--y-wash); }
+.resultados li.sin { display: block; color: var(--muted); cursor: default; }
+.resultados .cod { font-weight: 500; }
+.resultados .ubic small { display: block; color: var(--muted); font-size: 11px; }
+.resultados .per { font-size: 11px; color: var(--ink-soft); white-space: nowrap; }
+
+.ficha-compra {
+  margin-top: 14px;
+  background: var(--calc);
+  border-left: 4px solid var(--k);
+  padding: 10px 14px 12px;
+}
+.ficha-cab { display: flex; align-items: baseline; gap: 10px; }
+.ficha-cab .cod { font-size: 15px; font-weight: 500; }
+.ficha-cab .ubic { font-weight: 700; flex: 1; }
+.ficha-compra dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 14px;
+  margin: 10px 0 0;
+}
+.ficha-compra dt {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+.ficha-compra dd { margin: 0; font-size: 12.5px; }
+.ficha-compra .periodo {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule);
+}
+.ficha-compra .periodo .et {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+.ficha-compra .periodo .mono { font-size: 15px; font-weight: 500; }
+
+.vista-previa { margin-top: 8px; }
+.vista-previa img { display: block; max-width: 200px; max-height: 140px; border: 1px solid var(--rule); }
+
+.panel-cuerpo .campo.aviso input {
+  background: var(--warn-wash);
+  border-color: var(--warn);
+  box-shadow: inset 0 -2px 0 var(--warn);
+}
+.campo-aviso { color: var(--warn); font-size: 11.5px; margin-top: 4px; }
+.alerta.plan { margin-top: 12px; }
+.ir-compras { display: inline-block; margin-left: 6px; font-weight: 700; color: var(--ink); }

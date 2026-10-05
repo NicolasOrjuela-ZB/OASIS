@@ -141,7 +141,7 @@ Dos columnas: izquierda `--k` con la marca y una frase en `#A39D8B`; derecha el 
 | Pantalla | Equivale a | Componentes |
 |---|---|---|
 | Compras | Flow | Card con tabla editable; una fila por compra; alta en panel lateral; filtros de selección múltiple por mes, proveedor, tipo de costo; KPIs de total y cantidad |
-| Materiales | Tracking | Card con tabla editable; una fila por material; columnas calculadas de compra en `--calc`; calendario a la derecha; validación de fechas en celda |
+| Materiales | Tracking | Card con tabla editable; una fila por material; columnas calculadas de compra en `--calc`; botón que cambia la tabla por el calendario del mes; validación de fechas en celda con enlace «Partir →» al panel |
 | Consulta | Vista | Tabla de solo lectura con los mismos filtros; exportar a CSV |
 | Inversión | Inversion_total / semanal / diaria | Tres pestañas sobre la misma card; totales en fila negra |
 | Alertas | v_alertas | Lista agrupada por tipo con enlace a la fila que falla |

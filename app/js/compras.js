@@ -1,31 +1,12 @@
 // Pantalla de Compras: una fila por compra, equivale a la hoja Flow del Sheets.
 // Lo existente se edita en la tabla; lo nuevo se crea en el panel lateral.
 
-const { createApp, nextTick } = Vue;
-
-// Espejo de los enums de la base (oasis_v2_esquema.sql). Si cambian allá, cambian aquí.
-const ENUMS = {
-  tipo_compra: ['DIRECTO', 'BONIFICADO'],
-  medio:       ['OOH', 'DOOH'],
-  tipo_costo:  ['EXHIBICION', 'PRODUCCION', 'IMPUESTOS'],
-};
-
 const COLUMNAS_COMPRA = [
   'id', 'mercado_id', 'codigo', 'cliente', 'campana_id', 'proveedor_id',
   'tipo_compra', 'medio', 'tipo_costo', 'formato', 'ubicacion', 'ciudad',
   'tarifa_bruta', 'descuento_pct', 'tarifa_neta', 'cantidad', 'nro_semanas',
   'valor_total', 'valor_total_manual', 'fecha_inicio', 'fecha_fin',
 ].join(', ');
-
-// El panel que se está cerrando sigue en el DOM durante su animación de salida.
-const PANEL_ACTIVO = '.panel-fondo:not(.panel-leave-active)';
-
-const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-
-const fmt = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 });
-
-const redondear = (x, d) => Math.round(x * 10 ** d) / 10 ** d;
-const esNumero = (x) => typeof x === 'number' && Number.isFinite(x);
 
 // Lee lo que la gente escribe: "1.234.567", "1234567,5", "10,71", "10.71".
 function leerNumero(texto, decimales) {
@@ -51,17 +32,6 @@ function distancia(a, b) {
     }
   }
   return d[a.length][b.length];
-}
-
-// Trae todas las filas de una consulta, de a 1000 (límite por defecto de la API).
-async function traerTodo(consulta) {
-  const filas = [];
-  for (let desde = 0; ; desde += 1000) {
-    const { data, error } = await consulta().range(desde, desde + 999);
-    if (error) throw error;
-    filas.push(...data);
-    if (data.length < 1000) return filas;
-  }
 }
 
 // ------------------------------------------------------------------ Celda numérica
@@ -93,57 +63,6 @@ const CeldaNum = {
   },
   template: `<input class="n" inputmode="decimal" :id="id" :value="mostrado" :disabled="disabled"
                     @focus="alEnfocar" @blur="enfocada = false" @input="alEscribir">`,
-};
-
-// ------------------------------------------------------------------ Selección múltiple
-// Desplegable con casillas. Vacío = "Todos".
-const SeleccionMultiple = {
-  props: { modelValue: { type: Array, default: () => [] }, opciones: Array, id: String },
-  emits: ['update:modelValue'],
-  // `sel` es una copia local: dos clics seguidos no se pisan esperando al padre.
-  data() { return { abierto: false, sel: [...this.modelValue] }; },
-  watch: { modelValue(v) { this.sel = [...v]; } },
-  computed: {
-    resumen() {
-      const n = this.sel.length;
-      if (n === 0) return 'Todos';
-      if (n === 1) {
-        const o = this.opciones.find(x => x.valor === this.sel[0]);
-        return o ? o.etiqueta : '1 seleccionado';
-      }
-      return `${n} seleccionados`;
-    },
-  },
-  methods: {
-    alternar(valor) {
-      const s = new Set(this.sel);
-      s.has(valor) ? s.delete(valor) : s.add(valor);
-      // Conserva el orden de las opciones
-      this.sel = this.opciones.map(o => o.valor).filter(v => s.has(v));
-      this.$emit('update:modelValue', this.sel);
-    },
-    fuera(ev) { if (this.abierto && !this.$el.contains(ev.target)) this.abierto = false; },
-    tecla(ev) { if (ev.key === 'Escape') this.abierto = false; },
-  },
-  mounted() {
-    document.addEventListener('pointerdown', this.fuera);
-    this.$el.addEventListener('keydown', this.tecla);
-  },
-  unmounted() { document.removeEventListener('pointerdown', this.fuera); },
-  template: `
-    <div class="multi" :class="{ abierto, activo: modelValue.length }">
-      <button type="button" class="multi-boton" :id="id" @click="abierto = !abierto"
-              :aria-expanded="abierto">{{ resumen }}</button>
-      <div v-if="abierto" class="multi-lista">
-        <label v-for="o in opciones" :key="o.valor" class="multi-op">
-          <input type="checkbox" :checked="sel.includes(o.valor)" @change="alternar(o.valor)">
-          <span>{{ o.etiqueta }}</span>
-        </label>
-        <div v-if="!opciones.length" class="multi-vacio">Sin opciones</div>
-        <button v-if="modelValue.length" type="button" class="multi-limpiar"
-                @click="$emit('update:modelValue', [])">Limpiar · ver todos</button>
-      </div>
-    </div>`,
 };
 
 // ------------------------------------------------------------------ Combo

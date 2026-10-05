@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OASIS · Materiales</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sofia+Sans+Extra+Condensed:wght@700;800&family=Mulish:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="css/oasis.css">
+  <link rel="stylesheet" href="css/tabla.css">
+  <link rel="stylesheet" href="css/materiales.css">
+</head>
+<body>
+  <header class="topbar" id="barra"></header>
+
+  <main class="pagina" id="app" v-cloak>
+    <div class="eyebrow">{{ eyebrow }}</div>
+    <h1 class="titulo">Materiales</h1>
+
+    <div v-if="errorCarga" class="alerta error" style="margin-bottom:14px">{{ errorCarga }}</div>
+
+    <section class="card">
+      <div class="card-cab">
+        <h2>Tracking</h2>
+        <span class="estado-global mono" :class="estadoGlobal.clase">{{ estadoGlobal.texto }}</span>
+        <div class="acciones-cab">
+          <button class="btn" type="button" :disabled="cargando" @click="verCalendario">
+            {{ vista === 'calendario' ? 'Ver tabla' : 'Ver calendario' }}
+          </button>
+          <button class="btn p" type="button" :disabled="soloLectura || cargando"
+                  :title="soloLectura ? 'Tu rol es de solo lectura' : ''" @click="abrirPanel">Nuevo material</button>
+        </div>
+      </div>
+
+      <!-- Filtros -->
+      <div class="filtros filtros-materiales">
+        <div class="campo">
+          <label for="f-mercado">Mercado</label>
+          <select id="f-mercado" v-model="filtros.mercado" :disabled="misMercados.length === 1">
+            <option v-if="misMercados.length > 1" value="">Todos</option>
+            <option v-for="m in misMercados" :key="m.id" :value="m.id">{{ m.codigo }} · {{ m.nombre }}</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label for="f-mes">Mes</label>
+          <seleccion-multiple id="f-mes" v-model="filtros.meses" :opciones="opcionesMes"></seleccion-multiple>
+        </div>
+        <div class="campo">
+          <label for="f-proveedor">Proveedor</label>
+          <seleccion-multiple id="f-proveedor" v-model="filtros.proveedores" :opciones="opcionesProveedor"></seleccion-multiple>
+        </div>
+        <div class="campo">
+          <label for="f-sub">Sub campaña</label>
+          <seleccion-multiple id="f-sub" v-model="filtros.subCampanas" :opciones="opcionesSubCampana"></seleccion-multiple>
+        </div>
+        <div class="campo">
+          <label for="f-tipo">Tipo de costo</label>
+          <seleccion-multiple id="f-tipo" v-model="filtros.tiposCosto" :opciones="opcionesTipoCosto"></seleccion-multiple>
+        </div>
+        <div class="campo">
+          <label for="f-buscar">Buscar compra</label>
+          <input id="f-buscar" type="search" v-model="filtros.buscar" placeholder="Código o ubicación" autocomplete="off"
+                 :class="{ activo: filtros.buscar }">
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpis">
+        <div class="kpi">
+          <div class="kpi-et">Materiales</div>
+          <div class="kpi-val mono">{{ fmtEntero(kpis.total) }}</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-et">Sin fechas</div>
+          <div class="kpi-val mono" :class="{ 'kpi-err': kpis.sinFechas }">{{ fmtEntero(kpis.sinFechas) }}</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-et">Sin sub campaña</div>
+          <div class="kpi-val mono" :class="{ 'kpi-err': kpis.sinSub }">{{ fmtEntero(kpis.sinSub) }}</div>
+        </div>
+        <div class="kpi" title="Materiales con fechas fuera del periodo de su compra. Se resuelven con «Partir →» en la fila.">
+          <div class="kpi-et">Fuera de su compra</div>
+          <div class="kpi-val mono" :class="{ 'kpi-err': kpis.fuera }">{{ fmtEntero(kpis.fuera) }}</div>
+        </div>
+      </div>
+
+      <!-- Tabla -->
+      <div v-if="vista === 'tabla'" class="tabla-envoltura" @mouseover="mostrarGlobo" @mouseleave="ocultarGlobo">
+        <div v-if="cargando" class="vacio">Cargando materiales…</div>
+        <table v-else class="tabla tabla-materiales" @focusout="alSalirDeCelda">
+          <thead>
+            <tr>
+              <th class="pegada c0 calc">Código</th>
+              <th class="pegada c1 calc">Compra</th>
+              <th class="calc">Proveedor</th>
+              <th class="calc">Formato</th>
+              <th class="calc">Ciudad</th>
+              <th>Sub campaña</th>
+              <th>Referencia</th>
+              <th>Enlace</th>
+              <th class="calc">Imagen</th>
+              <th>Reporte de implementación</th>
+              <th class="num">Fecha inicio</th>
+              <th class="num">Fecha fin</th>
+              <th class="calc">Taxonomía</th>
+              <th class="estado-col"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="visibles.length === 0">
+              <td colspan="14" class="vacio">No hay materiales con estos filtros.</td>
+            </tr>
+            <tr v-for="r in visibles" :key="r._k" :data-k="r._k">
+              <td class="pegada c0 calc mono" :title="tramosDe(r)">
+                <span v-if="!filtros.mercado" class="mk">{{ codigoMercado(compraDe(r).mercado_id) }}</span>{{ codigoMaterial(r) }}<span v-if="r.grupo_tramo" class="tramo">⇄</span>
+              </td>
+              <td class="pegada c1 calc compra-col" :title="`${compraDe(r).codigo} · ${compraDe(r).ubicacion} · ${periodoCompra(compraDe(r))}`">
+                <span class="mono">{{ compraDe(r).codigo }}</span> · {{ compraDe(r).ubicacion }}
+              </td>
+              <td class="calc">{{ nombreProveedor(compraDe(r).proveedor_id) }}</td>
+              <td class="calc">{{ compraDe(r).formato }}</td>
+              <td class="calc">{{ compraDe(r).ciudad }}</td>
+              <td :class="claseErr(r, 'sub_campana_id')" :title="msgErr(r, 'sub_campana_id')">
+                <select v-model="r.sub_campana_id" :disabled="soloLectura" class="ancho-m">
+                  <option :value="null"></option>
+                  <option v-for="s in subCampanasDe(compraDe(r).mercado_id, r.sub_campana_id)" :key="s.id" :value="s.id">{{ s.nombre_unico }}</option>
+                </select>
+              </td>
+              <td><input v-model="r.referencia" :disabled="soloLectura" class="ancho-m"></td>
+              <td>
+                <div class="con-control">
+                  <input v-model="r.enlace" :disabled="soloLectura" class="ancho-l" :title="r.enlace">
+                  <a v-if="/^https?:\/\//i.test(r.enlace)" :href="r.enlace" target="_blank" rel="noopener" class="abrir" title="Abrir enlace">↗</a>
+                </div>
+              </td>
+              <td class="calc miniatura-col">
+                <template v-if="miniatura(r.enlace)">
+                  <a v-if="miniatura(r.enlace).tipo === 'imagen'" :href="r.enlace" target="_blank" rel="noopener"
+                     :data-img="miniatura(r.enlace, 400).url">
+                    <img :src="miniatura(r.enlace).url" alt="" loading="lazy" referrerpolicy="no-referrer">
+                  </a>
+                  <a v-else :href="r.enlace" target="_blank" rel="noopener" class="carpeta" title="Carpeta de Drive">
+                    <svg width="18" height="14" viewBox="0 0 18 14" aria-hidden="true"><path d="M0 1h7l2 2h9v11H0z" fill="currentColor"/></svg>
+                  </a>
+                </template>
+              </td>
+              <td><input v-model="r.reporte_implementacion" :disabled="soloLectura" class="ancho-m" :title="r.reporte_implementacion"></td>
+              <td :class="claseErr(r, 'fecha_inicio')" :title="msgErr(r, 'fecha_inicio')">
+                <div class="con-control">
+                  <input type="date" v-model="r.fecha_inicio" :disabled="soloLectura" class="fecha">
+                  <button v-if="msgErr(r, 'fecha_inicio') && fuera(r) && !soloLectura" type="button" class="enlace partir"
+                          @click="abrirPartir(r)">Partir →</button>
+                </div>
+              </td>
+              <td :class="claseErr(r, 'fecha_fin')" :title="msgErr(r, 'fecha_fin')">
+                <div class="con-control">
+                  <input type="date" v-model="r.fecha_fin" :disabled="soloLectura" class="fecha">
+                  <button v-if="msgErr(r, 'fecha_fin') && fuera(r) && !soloLectura" type="button" class="enlace partir"
+                          @click="abrirPartir(r)">Partir →</button>
+                </div>
+              </td>
+              <td class="calc taxonomia mono" :title="r.taxonomia">{{ r.taxonomia }}</td>
+              <td class="estado-col">
+                <div class="estado-fila">
+                  <span v-if="r._estado" class="pill" :class="r._estado.clase" :title="r._estado.detalle">{{ r._estado.texto }}</span>
+                  <button v-if="!soloLectura && r._estado && r._estado.clase === 'err' && tieneCambios(r)" type="button" class="mini"
+                          title="Volver a lo guardado" @click="deshacer(r)">Deshacer</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Calendario: una fila por material, un día por columna -->
+      <div v-else class="calendario-zona">
+        <div class="cal-barra">
+          <button type="button" class="btn flecha" @click="moverMes(-1)" title="Mes anterior">←</button>
+          <strong class="cal-mes">{{ nombreMes(calMes) }}</strong>
+          <button type="button" class="btn flecha" @click="moverMes(1)" title="Mes siguiente">→</button>
+          <span class="cal-nota mono">{{ calFilas.length }} {{ calFilas.length === 1 ? 'material activo' : 'materiales activos' }}</span>
+          <span class="cal-leyenda">
+            <span><i class="muestra activo"></i>Activo</span>
+            <span><i class="muestra compartido"></i>Compra con más de un material ese día</span>
+            <span v-if="costosMes && costosMes.cargando" class="mono">cargando costos…</span>
+          </span>
+        </div>
+        <div class="tabla-envoltura" @mouseover="mostrarGlobo" @mouseleave="ocultarGlobo">
+          <div v-if="!calFilas.length" class="vacio">Ningún material de estos filtros corre en {{ nombreMes(calMes) }}.</div>
+          <table v-else class="tabla calendario">
+            <thead>
+              <tr>
+                <th class="pegada c0 calc">Código</th>
+                <th class="pegada c1 calc">Compra</th>
+                <th v-for="d in calDias" :key="d.iso" class="dia" :class="{ finde: d.finde }">
+                  <span>{{ d.dow }}</span><span>{{ d.d }}</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="f in calFilas" :key="f.r._k" :data-k="f.r._k">
+                <td class="pegada c0 calc mono" :title="tramosDe(f.r)">{{ codigoMaterial(f.r) }}<span v-if="f.r.grupo_tramo" class="tramo">⇄</span></td>
+                <td class="pegada c1 calc compra-col" :title="`${compraDe(f.r).ubicacion} · ${periodoCompra(compraDe(f.r))}`">
+                  <span class="mono">{{ compraDe(f.r).codigo }}</span> · {{ compraDe(f.r).ubicacion }}
+                </td>
+                <td v-for="(clase, i) in f.celdas" :key="i" class="dia" :class="clase" :data-dia="calDias[i].iso"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Ayuda flotante: costo del día en el calendario, imagen ampliada en la tabla -->
+    <div v-if="globo" class="globo" :style="{ left: globo.x + 'px', top: globo.y + 'px' }">
+      <img v-if="globo.img" :src="globo.img" alt="" referrerpolicy="no-referrer">
+      <div v-for="(l, i) in globo.lineas" :key="i" :class="{ 'globo-tit': i === 0 }">{{ l }}</div>
+    </div>
+
+    <!-- Panel lateral: material nuevo o partición. No se guarda nada hasta confirmar. -->
+    <transition name="panel">
+      <div v-if="borrador" class="panel-fondo" @pointerdown.self="cerrarPanel">
+        <aside class="panel" role="dialog" aria-labelledby="panel-titulo">
+          <header class="panel-cab">
+            <div>
+              <div class="eyebrow">
+                <template v-if="compraBorrador">{{ codigoMercado(compraBorrador.mercado_id) }} · material {{ codigoPrevisto }}</template>
+                <template v-else>Elige la compra</template>
+              </div>
+              <h2 id="panel-titulo">{{ borrador.modo === 'partir' ? 'Partir material' : 'Nuevo material' }}</h2>
+            </div>
+            <button type="button" class="cerrar" title="Cancelar (Esc)" @click="cerrarPanel">×</button>
+          </header>
+
+          <form class="panel-cuerpo" id="form-material" @submit.prevent="guardarBorrador" novalidate>
+            <!-- 1. Compra -->
+            <div v-if="!compraBorrador" class="campo ancho-2" :class="{ err: errPanel('compra_id') }">
+              <label for="p-compra">Compra</label>
+              <input id="p-compra" v-model="borrador.busqueda" placeholder="Código o ubicación" autocomplete="off"
+                     @input="borrador.resaltado = 0" @keydown="teclaBusqueda" @blur="tocar('compra_id')">
+              <div class="campo-error" v-if="errPanel('compra_id')">{{ errPanel('compra_id') }}</div>
+              <ul class="resultados">
+                <li v-for="(c, i) in resultadosCompra" :key="c.id" :class="{ activo: i === borrador.resaltado }"
+                    @mousedown.prevent="elegirCompra(c)" @mouseenter="borrador.resaltado = i">
+                  <span class="mono cod">{{ filtros.mercado ? '' : codigoMercado(c.mercado_id) + ' ' }}{{ c.codigo }}</span>
+                  <span class="ubic">{{ c.ubicacion }}<small>{{ nombreProveedor(c.proveedor_id) }} · {{ c.formato }} · {{ c.tipo_costo }}</small></span>
+                  <span class="mono per">{{ periodoCompra(c) }}</span>
+                </li>
+                <li v-if="!resultadosCompra.length" class="sin">No hay compras que coincidan.</li>
+              </ul>
+            </div>
+
+            <div v-else class="ficha-compra ancho-2">
+              <div class="ficha-cab">
+                <span class="mono cod">{{ compraBorrador.codigo }}</span>
+                <span class="ubic">{{ compraBorrador.ubicacion }}</span>
+                <button v-if="borrador.modo === 'nuevo'" type="button" class="enlace" @click="cambiarCompra">cambiar</button>
+              </div>
+              <dl>
+                <div><dt>Proveedor</dt><dd>{{ nombreProveedor(compraBorrador.proveedor_id) }}</dd></div>
+                <div><dt>Formato</dt><dd>{{ compraBorrador.formato }}</dd></div>
+                <div><dt>Ciudad</dt><dd>{{ compraBorrador.ciudad }}</dd></div>
+                <div><dt>Tipo de costo</dt><dd>{{ compraBorrador.tipo_costo }}</dd></div>
+              </dl>
+              <div class="periodo">
+                <span class="et">Periodo de la compra</span>
+                <span class="mono">{{ periodoCompra(compraBorrador) }}</span>
+              </div>
+            </div>
+
+            <template v-if="compraBorrador">
+              <div class="campo calc">
+                <label>Código</label>
+                <input :value="codigoPrevisto" disabled class="mono"
+                       :title="borrador.material_id ? 'El material conserva su código' : 'Se asigna al guardar: la siguiente letra libre de la compra'">
+              </div>
+              <div class="campo" :class="{ err: errPanel('sub_campana_id') }">
+                <label for="p-sub">Sub campaña</label>
+                <select id="p-sub" v-model="borrador.sub_campana_id" @blur="tocar('sub_campana_id')">
+                  <option :value="null"></option>
+                  <option v-for="s in subCampanasDe(compraBorrador.mercado_id, borrador.sub_campana_id)" :key="s.id" :value="s.id">{{ s.nombre_unico }}</option>
+                </select>
+                <div class="campo-error" v-if="errPanel('sub_campana_id')">{{ errPanel('sub_campana_id') }}</div>
+              </div>
+              <div class="campo ancho-2">
+                <label for="p-ref">Referencia</label>
+                <input id="p-ref" v-model="borrador.referencia">
+              </div>
+              <div class="campo ancho-2">
+                <label for="p-enlace">Enlace</label>
+                <input id="p-enlace" v-model="borrador.enlace" placeholder="https://drive.google.com/…">
+                <div v-if="miniaturaBorrador" class="vista-previa">
+                  <img v-if="miniaturaBorrador.tipo === 'imagen'" :src="miniaturaBorrador.url" alt="" referrerpolicy="no-referrer">
+                  <span v-else class="campo-pista">Carpeta de Drive</span>
+                </div>
+              </div>
+              <div class="campo" :class="{ err: errPanel('fecha_inicio') && !particionOk, aviso: errPanel('fecha_inicio') && particionOk }">
+                <label for="p-inicio">Fecha inicio</label>
+                <input id="p-inicio" type="date" v-model="borrador.fecha_inicio" class="mono"
+                       @input="tocar('fecha_inicio')" @blur="tocar('fecha_inicio')">
+              </div>
+              <div class="campo" :class="{ err: errPanel('fecha_fin') && !particionOk, aviso: errPanel('fecha_fin') && particionOk }">
+                <label for="p-fin">Fecha fin</label>
+                <input id="p-fin" type="date" v-model="borrador.fecha_fin" class="mono"
+                       @input="tocar('fecha_fin')" @blur="tocar('fecha_fin')">
+              </div>
+              <!-- Un solo mensaje para el par de fechas -->
+              <div class="ancho-2" v-if="errPanel('fecha_fin') || errPanel('fecha_inicio')">
+                <div :class="particionOk ? 'campo-aviso' : 'campo-error'">{{ errPanel('fecha_fin') || errPanel('fecha_inicio') }}</div>
+              </div>
+              <div class="ancho-2" v-if="mensajePlan && (borrador._tocados.fecha_fin || borrador._intento)">
+                <div class="alerta plan" :class="mensajePlan.clase">
+                  {{ mensajePlan.texto }}
+                  <a v-if="mensajePlan.compras" href="compras.html" target="_blank" rel="noopener" class="ir-compras">Ir a Compras ↗</a>
+                </div>
+              </div>
+            </template>
+          </form>
+
+          <footer class="panel-pie">
+            <div v-if="borrador._error" class="alerta error">{{ borrador._error }}</div>
+            <div v-else-if="borrador._intento && bloqueoBorrador" class="alerta error">Revisa los campos marcados.</div>
+            <div class="botones">
+              <button type="button" class="btn" @click="cerrarPanel" :disabled="borrador._guardando">Cancelar</button>
+              <button type="submit" form="form-material" class="btn p" :disabled="borrador._guardando">{{ textoGuardar }}</button>
+            </div>
+          </footer>
+        </aside>
+      </div>
+    </transition>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+  <script src="config.js"></script>
+  <script src="js/comun.js"></script>
+  <script src="js/componentes.js"></script>
+  <script src="js/tramos.js"></script>
+  <script src="js/materiales.js"></script>
+</body>
+</html>
