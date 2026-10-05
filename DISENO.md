@@ -135,14 +135,14 @@ Dos columnas: izquierda `--k` con la marca y una frase en `#A39D8B`; derecha el 
 4. **Los números siempre en monoespaciada y alineados a la derecha.** Sin excepciones, incluidos códigos y fechas.
 5. **Los errores se marcan en la celda**, no solo en un mensaje general. Fondo rojo claro y línea inferior roja.
 6. **Lo existente se edita en tabla; lo nuevo se crea en panel lateral.** Las compras y los materiales que ya existen se editan en su fila. Los nuevos se crean en un panel que entra desde la derecha y no existen hasta que se guardan. Los modales siguen siendo solo para confirmaciones.
+7. **El rol LECTURA ve texto, no campos.** En Compras y Materiales los valores se muestran como texto plano, sin inputs; no hay botón de nuevo ni guardado al salir de la celda. Sí puede filtrar, ver el calendario y exportar.
 
 ## Pantallas de la Fase 2 (interfaz interna)
 
 | Pantalla | Equivale a | Componentes |
 |---|---|---|
 | Compras | Flow | Card con tabla editable; una fila por compra; alta en panel lateral; filtros de selección múltiple por mes, proveedor, tipo de costo; KPIs de total y cantidad |
-| Materiales | Tracking | Card con tabla editable; una fila por material; columnas calculadas de compra en `--calc`; botón que cambia la tabla por el calendario del mes; validación de fechas en celda con enlace «Partir →» al panel |
-| Consulta | Vista | Tabla de solo lectura con los mismos filtros; exportar a CSV |
+| Materiales | Tracking | Card con tabla editable; una fila por material; columnas calculadas de compra en `--calc`; botón que cambia la tabla por el calendario del mes; validación de fechas en celda con enlace «Partir →» al panel; exportar a CSV las filas filtradas. Absorbe la antigua pantalla Consulta (hoja Vista) |
 | Inversión | Inversion_total / semanal / diaria | Tres pestañas sobre la misma card; totales en fila negra |
 | Alertas | v_alertas | Lista agrupada por tipo con enlace a la fila que falla |
 

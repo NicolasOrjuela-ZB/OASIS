@@ -22,7 +22,7 @@ El objetivo del sistema es saber cuánta plata corresponde a cada material, día
 | Credenciales Postgres | `.env` — nunca al repositorio |
 | Autenticación y RLS | `rls_fase2.sql` — funciones de identidad, políticas, trigger de vínculo |
 | Sistema de diseño | `DISENO.md` — tokens, tipografía, componentes y pantallas de la interfaz |
-| Interfaz interna | `app/` — sitio estático; login con código de 6 dígitos por correo (contraseña solo en localhost) |
+| Interfaz interna | `app/` — sitio estático; login con código de 6 dígitos por correo (contraseña solo en localhost). Con rol LECTURA, Compras y Materiales se muestran como texto, sin edición |
 | Plantilla de correo de acceso | `supabase/plantilla_codigo.html` — se pega a mano en Supabase → Authentication → Emails (Magic Link y Confirm signup) |
 | Código | GitHub `NicolasOrjuela-ZB/OASIS` |
 | Fuente de captura actual | Google Sheets `13Vh45CymNMntNG-EW3NQnglnfyvq39nT7nvediDTV1g` (los equipos siguen llenando ahí hasta que exista la interfaz) |
@@ -106,7 +106,7 @@ El script localiza encabezados por nombre, no por posición. Si falta uno, se de
 
 **RLS:** activo con 18 políticas para roles internos (PLANNING, ZB, LECTURA, ADMIN), definidas en `rls_fase2.sql`. Catálogos: lectura para internos, escritura ADMIN. `compras` y `materiales`: según `fn_mis_mercados()`; LECTURA no escribe. `usuarios` y `usuario_mercados`: cada uno lo suyo, ADMIN todo. Las vistas tienen `security_invoker` y `anon` no tiene acceso. AGENCIA y PROVEEDOR no tienen políticas: sin acceso hasta la Fase 3. `postgres` salta RLS, así que la carga y BI no se ven afectados.
 
-**Fase 2 (en curso):** interfaz interna para planning y ZB. Se construye con Claude Code siguiendo `DISENO.md`. Compras y Materiales están terminadas; quedan Consulta, Inversión y Alertas. El portal de proveedores pasa a la Fase 3.
+**Fase 2 (en curso):** interfaz interna para planning y ZB. Se construye con Claude Code siguiendo `DISENO.md`. Compras y Materiales están terminadas; quedan Inversión y Alertas. Consulta se eliminó: Materiales la absorbe (filtros, solo lectura para LECTURA y exportar a CSV). El portal de proveedores pasa a la Fase 3.
 
 **Datos por limpiar en el Sheets** (trabajo del equipo, no del sistema), según la carga del 5 de octubre de 2026: 1 material sin fechas (053-A), 109 materiales fuera del periodo de su compra (se resuelven con «Partir →» en Materiales), 12 compras sin materiales, proveedores duplicados (`JCDECAUX`/`JCDX`, `PUBLICIDAD BARRANQUILLA`/`PUBLICIDAD BQUILLA`).
 
