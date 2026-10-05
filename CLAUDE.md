@@ -22,6 +22,8 @@ El objetivo del sistema es saber cuánta plata corresponde a cada material, día
 | Credenciales Postgres | `.env` — nunca al repositorio |
 | Autenticación y RLS | `rls_fase2.sql` — funciones de identidad, políticas, trigger de vínculo |
 | Sistema de diseño | `DISENO.md` — tokens, tipografía, componentes y pantallas de la interfaz |
+| Interfaz interna | `app/` — sitio estático; login con código de 6 dígitos por correo (contraseña solo en localhost) |
+| Plantilla de correo de acceso | `supabase/plantilla_codigo.html` — se pega a mano en Supabase → Authentication → Emails (Magic Link y Confirm signup) |
 | Código | GitHub `NicolasOrjuela-ZB/OASIS` |
 | Fuente de captura actual | Google Sheets `13Vh45CymNMntNG-EW3NQnglnfyvq39nT7nvediDTV1g` (los equipos siguen llenando ahí hasta que exista la interfaz) |
 

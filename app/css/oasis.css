@@ -236,8 +236,38 @@ h1.titulo {
   padding: 48px 24px;
 }
 .login .lado-form .caja { width: 100%; max-width: 520px; }
-.login .lado-form .btn { margin-top: 18px; width: 100%; }
+.login .lado-form .btn { margin-top: 18px; }
+.login .lado-form .btn.ancho { width: 100%; }
 .login .lado-form .alerta { margin-top: 18px; }
+.login .ayuda { margin: 14px 0 0; color: var(--ink-soft); }
+.login .acciones { display: flex; gap: 10px; }
+.login .acciones .btn { flex: 1; margin-top: 10px; }
+.login .pestanas { margin-top: 4px; }
+.campo input.codigo {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 26px;
+  letter-spacing: 0.4em;
+  height: 52px;
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------- Pestañas */
+
+.pestanas { display: flex; }
+.pestanas button {
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  color: var(--muted);
+  font: 700 12px var(--f-cuerpo);
+  padding: 8px 14px;
+  margin-left: -1px;
+  cursor: pointer;
+  border-radius: 0;
+}
+.pestanas button:first-child { margin-left: 0; }
+.pestanas button.activa { background: var(--k); border-color: var(--k); color: var(--y); }
+.pestanas button:focus-visible { outline: 2px solid var(--y); outline-offset: 1px; }
 
 @media (max-width: 760px) {
   .login { grid-template-columns: 1fr; }

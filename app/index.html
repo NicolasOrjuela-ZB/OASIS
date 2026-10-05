@@ -23,22 +23,59 @@
         <div class="eyebrow">Acceso interno</div>
         <h1 class="titulo">Entrar</h1>
 
-        <!-- Paso 1: pedir el enlace -->
-        <form id="form-correo" hidden>
-          <p style="margin:0;color:var(--ink-soft)">Te enviamos un enlace de acceso a tu correo. No hay contraseña.</p>
-          <div class="campo">
-            <label for="correo">Correo</label>
-            <input id="correo" type="email" autocomplete="email" required placeholder="nombre@empresa.com">
+        <div id="metodos" hidden>
+          <!-- La contraseña es para desarrollo: la pestaña solo aparece en localhost -->
+          <div class="pestanas" id="pestanas" hidden>
+            <button type="button" class="activa" data-metodo="codigo">Código por correo</button>
+            <button type="button" data-metodo="clave">Contraseña</button>
           </div>
-          <button class="btn p" type="submit" id="btn-enviar">Enviar enlace</button>
-        </form>
+
+          <!-- Código: paso 1, pedirlo -->
+          <form id="form-pedir" data-metodo="codigo">
+            <p class="ayuda">Te enviamos un código de 6 dígitos a tu correo. No hay contraseña.</p>
+            <div class="campo">
+              <label for="correo">Correo</label>
+              <input id="correo" type="email" autocomplete="email" required placeholder="nombre@empresa.com">
+            </div>
+            <button class="btn p ancho" type="submit" id="btn-pedir">Enviar código</button>
+          </form>
+
+          <!-- Código: paso 2, escribirlo -->
+          <form id="form-codigo" hidden>
+            <p class="ayuda">Escribe el código que enviamos a <strong id="correo-enviado"></strong>.</p>
+            <div class="campo">
+              <label for="codigo">Código</label>
+              <input id="codigo" class="codigo" type="text" inputmode="numeric" autocomplete="one-time-code"
+                     maxlength="6" pattern="\d{6}" required placeholder="000000">
+            </div>
+            <button class="btn p ancho" type="submit" id="btn-verificar">Entrar</button>
+            <div class="acciones">
+              <button class="btn" type="button" id="btn-reenviar">Reenviar código</button>
+              <button class="btn" type="button" id="btn-cambiar">Cambiar correo</button>
+            </div>
+          </form>
+
+          <!-- Contraseña -->
+          <form id="form-clave" data-metodo="clave" hidden>
+            <p class="ayuda">Solo para desarrollo. La cuenta se crea en Supabase con contraseña.</p>
+            <div class="campo">
+              <label for="correo-clave">Correo</label>
+              <input id="correo-clave" type="email" autocomplete="username" required placeholder="nombre@empresa.com">
+            </div>
+            <div class="campo">
+              <label for="clave">Contraseña</label>
+              <input id="clave" type="password" autocomplete="current-password" required>
+            </div>
+            <button class="btn p ancho" type="submit" id="btn-clave">Entrar</button>
+          </form>
+        </div>
 
         <!-- Mensajes -->
         <div id="mensaje" class="alerta" hidden></div>
 
         <!-- Sesión sin acceso -->
         <div id="sin-acceso" hidden>
-          <button class="btn" type="button" id="btn-otro">Entrar con otro correo</button>
+          <button class="btn ancho" type="button" id="btn-otro">Entrar con otro correo</button>
         </div>
       </div>
     </section>
@@ -47,84 +84,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="js/comun.js"></script>
-  <script>
-    const form = document.getElementById('form-correo');
-    const inputCorreo = document.getElementById('correo');
-    const btnEnviar = document.getElementById('btn-enviar');
-    const mensaje = document.getElementById('mensaje');
-    const sinAcceso = document.getElementById('sin-acceso');
-
-    function mostrar(tipo, texto) {
-      mensaje.className = 'alerta' + (tipo ? ' ' + tipo : '');
-      mensaje.textContent = texto;
-      mensaje.hidden = false;
-    }
-
-    // Si el enlace vino con error (vencido, ya usado), Supabase lo deja en el hash.
-    function errorDelEnlace() {
-      const h = new URLSearchParams(window.location.hash.slice(1));
-      const q = new URLSearchParams(window.location.search);
-      const desc = h.get('error_description') || q.get('error_description');
-      if (!desc) return null;
-      history.replaceState(null, '', window.location.pathname);
-      return desc.replace(/\+/g, ' ');
-    }
-
-    async function iniciar() {
-      const errEnlace = errorDelEnlace();
-      let estado;
-      try {
-        estado = await usuarioActual();
-      } catch (e) {
-        form.hidden = false;
-        mostrar('error', 'No se pudo verificar tu acceso: ' + e.message);
-        return;
-      }
-
-      if (estado.session && estado.usuario) {
-        window.location.replace('compras.html');
-        return;
-      }
-
-      if (estado.session && !estado.usuario) {
-        mostrar('error',
-          `El correo ${estado.session.user.email} no tiene acceso a OASIS, o su usuario está inactivo. ` +
-          'Pide a un administrador que te dé de alta y vuelve a entrar.');
-        sinAcceso.hidden = false;
-        return;
-      }
-
-      form.hidden = false;
-      if (errEnlace) mostrar('error', 'El enlace no sirvió (' + errEnlace + '). Pide uno nuevo.');
-    }
-
-    form.addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      const correo = inputCorreo.value.trim().toLowerCase();
-      if (!correo) return;
-      btnEnviar.disabled = true;
-      btnEnviar.textContent = 'Enviando…';
-      const { error } = await sb.auth.signInWithOtp({
-        email: correo,
-        options: { emailRedirectTo: new URL('index.html', window.location.href).href },
-      });
-      btnEnviar.disabled = false;
-      btnEnviar.textContent = 'Enviar enlace';
-      if (error) {
-        mostrar('error', 'No se pudo enviar el enlace: ' + error.message);
-      } else {
-        mostrar('', `Listo. Revisa ${correo} y abre el enlace desde este mismo navegador.`);
-      }
-    });
-
-    document.getElementById('btn-otro').addEventListener('click', async () => {
-      await sb.auth.signOut();
-      sinAcceso.hidden = true;
-      mensaje.hidden = true;
-      form.hidden = false;
-    });
-
-    iniciar();
-  </script>
+  <script src="js/login.js"></script>
 </body>
 </html>

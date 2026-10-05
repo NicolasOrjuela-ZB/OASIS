@@ -1,0 +1,45 @@
+<!--
+  Plantilla de correo de OASIS: código de acceso de 6 dígitos.
+
+  Se pega en Supabase → Authentication → Emails, en DOS plantillas:
+    · "Magic Link"      (usuarios que ya entraron alguna vez)
+    · "Confirm signup"  (primer ingreso: Supabase crea el usuario y usa esta)
+  Asunto sugerido para ambas: Tu código de acceso a OASIS
+
+  Lleva {{ .Token }} y NINGÚN enlace de acceso ({{ .ConfirmationURL }}): los
+  escáneres del correo corporativo abren los enlaces y los dejan vencidos.
+-->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F2F0EA;padding:32px 0;font-family:Arial,Helvetica,sans-serif;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border:1px solid #E0DCD0;border-top:4px solid #000000;">
+        <tr>
+          <td style="background:#000000;padding:16px 24px;color:#FFFFFF;font-size:22px;font-weight:bold;letter-spacing:0.02em;">
+            OASIS<span style="color:#FDC62C;">.</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 24px 8px;color:#16150F;font-size:15px;line-height:1.5;">
+            Tu código de acceso es:
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:8px 24px 20px;">
+            <div style="font-family:'Courier New',Courier,monospace;font-size:34px;font-weight:bold;letter-spacing:0.3em;color:#16150F;background:#FFF5D6;border-left:4px solid #FDC62C;padding:14px 18px;">{{ .Token }}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 24px 28px;color:#4B4636;font-size:13px;line-height:1.5;">
+            Escríbelo en la pantalla de OASIS donde lo pediste. Vence en una hora y sirve una sola vez.<br>
+            Si no pediste este código, ignora este correo.
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:12px 24px;border-top:1px solid #E0DCD0;color:#6E6858;font-size:11px;font-family:'Courier New',Courier,monospace;letter-spacing:0.08em;">
+            ZETAB · OASIS V2.0
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
