@@ -1,5 +1,5 @@
-// Pantalla de Compras: una fila por compra, editable en la tabla.
-// Equivale a la hoja Flow del Sheets.
+// Pantalla de Compras: una fila por compra, equivale a la hoja Flow del Sheets.
+// Lo existente se edita en la tabla; lo nuevo se crea en el panel lateral.
 
 const { createApp, nextTick } = Vue;
 
@@ -14,8 +14,11 @@ const COLUMNAS_COMPRA = [
   'id', 'mercado_id', 'codigo', 'cliente', 'campana_id', 'proveedor_id',
   'tipo_compra', 'medio', 'tipo_costo', 'formato', 'ubicacion', 'ciudad',
   'tarifa_bruta', 'descuento_pct', 'tarifa_neta', 'cantidad', 'nro_semanas',
-  'valor_total', 'fecha_inicio', 'fecha_fin',
+  'valor_total', 'valor_total_manual', 'fecha_inicio', 'fecha_fin',
 ].join(', ');
+
+// El panel que se está cerrando sigue en el DOM durante su animación de salida.
+const PANEL_ACTIVO = '.panel-fondo:not(.panel-leave-active)';
 
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
@@ -35,6 +38,21 @@ function leerNumero(texto, decimales) {
   return /^-?\d*\.?\d+$|^-?\d+\.$/.test(normal) ? Number(normal) : NaN;
 }
 
+// Formatos en mayúscula y con un solo espacio: "valla  led " -> "VALLA LED".
+const normFormato = (s) => (s || '').replace(/\s+/g, ' ').trim().toUpperCase();
+const compacto = (s) => normFormato(s).replace(/[^A-Z0-9]/g, '');
+
+function distancia(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+  }
+  return d[a.length][b.length];
+}
+
 // Trae todas las filas de una consulta, de a 1000 (límite por defecto de la API).
 async function traerTodo(consulta) {
   const filas = [];
@@ -49,7 +67,7 @@ async function traerTodo(consulta) {
 // ------------------------------------------------------------------ Celda numérica
 // Muestra el número con separadores cuando no tiene foco, y el valor crudo al editar.
 const CeldaNum = {
-  props: { modelValue: null, decimales: { type: Number, default: 2 }, disabled: Boolean },
+  props: { modelValue: null, decimales: { type: Number, default: 2 }, disabled: Boolean, id: String },
   emits: ['update:modelValue', 'editado'],
   data: () => ({ enfocada: false, texto: '' }),
   computed: {
@@ -73,8 +91,131 @@ const CeldaNum = {
       this.$emit('editado');
     },
   },
-  template: `<input class="n" inputmode="decimal" :value="mostrado" :disabled="disabled"
+  template: `<input class="n" inputmode="decimal" :id="id" :value="mostrado" :disabled="disabled"
                     @focus="alEnfocar" @blur="enfocada = false" @input="alEscribir">`,
+};
+
+// ------------------------------------------------------------------ Selección múltiple
+// Desplegable con casillas. Vacío = "Todos".
+const SeleccionMultiple = {
+  props: { modelValue: { type: Array, default: () => [] }, opciones: Array, id: String },
+  emits: ['update:modelValue'],
+  // `sel` es una copia local: dos clics seguidos no se pisan esperando al padre.
+  data() { return { abierto: false, sel: [...this.modelValue] }; },
+  watch: { modelValue(v) { this.sel = [...v]; } },
+  computed: {
+    resumen() {
+      const n = this.sel.length;
+      if (n === 0) return 'Todos';
+      if (n === 1) {
+        const o = this.opciones.find(x => x.valor === this.sel[0]);
+        return o ? o.etiqueta : '1 seleccionado';
+      }
+      return `${n} seleccionados`;
+    },
+  },
+  methods: {
+    alternar(valor) {
+      const s = new Set(this.sel);
+      s.has(valor) ? s.delete(valor) : s.add(valor);
+      // Conserva el orden de las opciones
+      this.sel = this.opciones.map(o => o.valor).filter(v => s.has(v));
+      this.$emit('update:modelValue', this.sel);
+    },
+    fuera(ev) { if (this.abierto && !this.$el.contains(ev.target)) this.abierto = false; },
+    tecla(ev) { if (ev.key === 'Escape') this.abierto = false; },
+  },
+  mounted() {
+    document.addEventListener('pointerdown', this.fuera);
+    this.$el.addEventListener('keydown', this.tecla);
+  },
+  unmounted() { document.removeEventListener('pointerdown', this.fuera); },
+  template: `
+    <div class="multi" :class="{ abierto, activo: modelValue.length }">
+      <button type="button" class="multi-boton" :id="id" @click="abierto = !abierto"
+              :aria-expanded="abierto">{{ resumen }}</button>
+      <div v-if="abierto" class="multi-lista">
+        <label v-for="o in opciones" :key="o.valor" class="multi-op">
+          <input type="checkbox" :checked="sel.includes(o.valor)" @change="alternar(o.valor)">
+          <span>{{ o.etiqueta }}</span>
+        </label>
+        <div v-if="!opciones.length" class="multi-vacio">Sin opciones</div>
+        <button v-if="modelValue.length" type="button" class="multi-limpiar"
+                @click="$emit('update:modelValue', [])">Limpiar · ver todos</button>
+      </div>
+    </div>`,
+};
+
+// ------------------------------------------------------------------ Combo
+// Desplegable con opciones existentes que también acepta texto nuevo.
+// La lista va en posición fija para que no la recorte el scroll de la tabla.
+const Combo = {
+  props: { modelValue: String, opciones: Array, disabled: Boolean, id: String },
+  emits: ['update:modelValue'],
+  data: () => ({ abierto: false, filtro: '', activo: -1, pos: {} }),
+  computed: {
+    lista() {
+      const f = normFormato(this.filtro);
+      return f ? this.opciones.filter(o => o.includes(f)) : this.opciones;
+    },
+  },
+  methods: {
+    ubicar() {
+      const r = this.$refs.input.getBoundingClientRect();
+      const abajo = window.innerHeight - r.bottom > 220;
+      this.pos = {
+        left: `${r.left}px`,
+        minWidth: `${Math.max(r.width, 180)}px`,
+        ...(abajo ? { top: `${r.bottom}px` } : { bottom: `${window.innerHeight - r.top}px` }),
+      };
+    },
+    // Al desplazar (incluido el que hace el navegador al enfocar una celda) la lista
+    // acompaña al campo; solo se cierra si el campo sale de la vista.
+    alDesplazar() {
+      if (!this.abierto) return;
+      const r = this.$refs.input.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > window.innerHeight) this.cerrar();
+      else this.ubicar();
+    },
+    abrir() {
+      this.ubicar();
+      this.filtro = '';
+      this.activo = -1;
+      this.abierto = true;
+    },
+    cerrar() { this.abierto = false; },
+    alEscribir(ev) {
+      this.$emit('update:modelValue', ev.target.value);
+      if (!this.abierto) this.abrir();
+      this.filtro = ev.target.value;
+      this.activo = -1;
+    },
+    elegir(o) {
+      this.$emit('update:modelValue', o);
+      this.abierto = false;
+    },
+    tecla(ev) {
+      if (!this.abierto) {
+        if (ev.key === 'ArrowDown') { this.abrir(); ev.preventDefault(); }
+        return;
+      }
+      if (ev.key === 'ArrowDown') { this.activo = Math.min(this.activo + 1, this.lista.length - 1); ev.preventDefault(); }
+      else if (ev.key === 'ArrowUp') { this.activo = Math.max(this.activo - 1, 0); ev.preventDefault(); }
+      else if (ev.key === 'Enter' && this.activo >= 0) { this.elegir(this.lista[this.activo]); ev.preventDefault(); }
+      else if (ev.key === 'Escape') { this.cerrar(); ev.stopPropagation(); }
+    },
+  },
+  mounted() { window.addEventListener('scroll', this.alDesplazar, true); },
+  unmounted() { window.removeEventListener('scroll', this.alDesplazar, true); },
+  template: `
+    <div class="combo">
+      <input ref="input" :id="id" :value="modelValue" :disabled="disabled" autocomplete="off"
+             @focus="abrir" @blur="cerrar" @input="alEscribir" @keydown="tecla">
+      <ul v-if="abierto && lista.length" class="combo-lista" :style="pos">
+        <li v-for="(o, i) in lista" :key="o" :class="{ activo: i === activo, elegido: o === modelValue }"
+            @mousedown.prevent="elegir(o)">{{ o }}</li>
+      </ul>
+    </div>`,
 };
 
 // ------------------------------------------------------------------ Filas
@@ -82,34 +223,35 @@ const CeldaNum = {
 let contadorFilas = 0;
 
 // Lo que se manda a la base. El descuento en pantalla va de 0 a 100; en la base,
-// como fracción (0,15 = 15 %), igual que lo carga cargar_oasis.py desde el Sheets.
-function aPayload(r) {
+// como fracción (0,15 = 15 %). La campaña la fija el mercado.
+function aPayload(r, campanaOoh) {
   return {
-    mercado_id:    r.mercado_id,
-    codigo:        r.codigo,
-    cliente:       r.cliente,
-    campana_id:    r.campana_id,
-    proveedor_id:  r.proveedor_id,
-    tipo_compra:   r.tipo_compra,
-    medio:         r.medio,
-    tipo_costo:    r.tipo_costo,
-    formato:       r.formato,
-    ubicacion:     r.ubicacion,
-    ciudad:        r.ciudad,
-    tarifa_bruta:  r.tarifa_bruta,
-    descuento_pct: redondear(r.descuento / 100, 4),
-    tarifa_neta:   r.tarifa_neta,
-    cantidad:      r.cantidad,
-    nro_semanas:   r.nro_semanas,
-    valor_total:   r.valor_total,
-    fecha_inicio:  r.fecha_inicio,
-    fecha_fin:     r.fecha_fin,
+    mercado_id:         r.mercado_id,
+    codigo:             r.codigo,
+    cliente:            r.cliente,
+    campana_id:         campanaOoh || r.campana_id,
+    proveedor_id:       r.proveedor_id,
+    tipo_compra:        r.tipo_compra,
+    medio:              r.medio,
+    tipo_costo:         r.tipo_costo,
+    formato:            normFormato(r.formato),
+    ubicacion:          r.ubicacion,
+    ciudad:             r.ciudad,
+    tarifa_bruta:       r.tarifa_bruta,
+    descuento_pct:      redondear(r.descuento / 100, 4),
+    tarifa_neta:        r.tarifa_neta,
+    cantidad:           r.cantidad,
+    nro_semanas:        r.nro_semanas,
+    valor_total:        r.valor_total,
+    valor_total_manual: r.valor_total_manual,
+    fecha_inicio:       r.fecha_inicio,
+    fecha_fin:          r.fecha_fin,
   };
 }
 
 function desdeBase(c) {
   const num = (x) => (x === null || x === undefined ? null : Number(x));
-  const r = {
+  return {
     _k: ++contadorFilas,
     id: c.id,
     mercado_id: c.mercado_id,
@@ -129,55 +271,48 @@ function desdeBase(c) {
     cantidad: num(c.cantidad),
     nro_semanas: num(c.nro_semanas),
     valor_total: num(c.valor_total),
+    valor_total_manual: !!c.valor_total_manual,
     fecha_inicio: c.fecha_inicio,
     fecha_fin: c.fecha_fin,
-    _intento: true,      // las filas existentes muestran sus errores de inmediato
+    _snap: null,              // último payload guardado (se llena al montar)
+    _formatoGuardado: normFormato(c.formato),
+    _formatoNuevoOk: '',      // formato nuevo que el usuario ya confirmó
     _guardando: false,
     _repetir: false,
     _estado: null,
   };
-  r._snap = JSON.stringify(aPayload(r));
-  return r;
 }
 
-function filaNueva(mercadoId, codigo) {
-  const r = {
-    _k: ++contadorFilas,
-    id: null, mercado_id: mercadoId, codigo,
-    cliente: '', campana_id: null, proveedor_id: null,
+function borradorNuevo(mercadoId, campanaOoh) {
+  return {
+    mercado_id: mercadoId,
+    cliente: '', campana_id: campanaOoh, proveedor_id: null,
     tipo_compra: null, medio: null, tipo_costo: null,
     formato: '', ubicacion: '', ciudad: '',
     tarifa_bruta: null, descuento: 0, tarifa_neta: 0,
-    cantidad: 1, nro_semanas: null, valor_total: 0,
+    cantidad: 1, nro_semanas: null, valor_total: 0, valor_total_manual: false,
     fecha_inicio: null, fecha_fin: null,
-    _intento: false,     // una fila nueva no grita errores hasta que se sale de ella
-    _guardando: false, _repetir: false, _estado: null,
-    _snap: null,
+    _formatoNuevoOk: '',
+    _tocados: {},             // campos por los que ya pasó el usuario
+    _intento: false,          // intentó guardar: se muestran todos los errores
+    _guardando: false,
+    _error: '',
   };
-  return r;
 }
 
-function validar(r, campanasPorId, proveedoresPorId) {
+function validar(r, ctx) {
   const e = {};
   const obligatorio = 'Obligatorio';
 
-  for (const c of ['cliente', 'formato', 'ubicacion', 'ciudad']) {
-    if (!r[c]) e[c] = obligatorio;
-  }
-  for (const c of ['tipo_compra', 'medio', 'tipo_costo']) {
+  for (const c of ['cliente', 'formato', 'ubicacion', 'ciudad', 'tipo_compra', 'medio', 'tipo_costo']) {
     if (!r[c]) e[c] = obligatorio;
   }
 
-  if (!r.campana_id) e.campana_id = obligatorio;
-  else {
-    const c = campanasPorId.get(r.campana_id);
-    if (!c) e.campana_id = 'Campaña desconocida';
-    else if (c.mercado_id !== r.mercado_id) e.campana_id = 'La campaña es de otro mercado';
-  }
+  if (!ctx.campanaOoh(r.mercado_id)) e.campana_id = 'El mercado no tiene campaña OOH configurada';
 
   if (!r.proveedor_id) e.proveedor_id = obligatorio;
   else {
-    const p = proveedoresPorId.get(r.proveedor_id);
+    const p = ctx.proveedoresPorId.get(r.proveedor_id);
     if (!p) e.proveedor_id = 'Proveedor desconocido';
     else if (p.mercado_id !== r.mercado_id) e.proveedor_id = 'El proveedor es de otro mercado';
   }
@@ -199,6 +334,12 @@ function validar(r, campanasPorId, proveedoresPorId) {
     else if (r.nro_semanas < 0) e.nro_semanas = 'No puede ser negativo';
   }
 
+  if (r.valor_total_manual) {
+    if (r.valor_total === null) e.valor_total = obligatorio;
+    else if (!esNumero(r.valor_total)) e.valor_total = 'No es un número';
+    else if (r.valor_total < 0) e.valor_total = 'No puede ser negativo';
+  }
+
   if (!r.fecha_inicio) e.fecha_inicio = obligatorio;
   if (!r.fecha_fin) e.fecha_fin = obligatorio;
   if (r.fecha_inicio && r.fecha_fin && r.fecha_fin < r.fecha_inicio) {
@@ -208,23 +349,14 @@ function validar(r, campanasPorId, proveedoresPorId) {
   return e;
 }
 
-// Diferencias entre lo guardado y la fórmula. Vienen del Sheets: se muestran,
-// no se corrigen solas.
-function observaciones(r) {
-  const o = { neta: '', total: '' };
-  if (esNumero(r.tarifa_bruta) && esNumero(r.descuento) && esNumero(r.tarifa_neta)) {
-    const f = redondear(r.tarifa_bruta * (1 - r.descuento / 100), 2);
-    if (Math.abs(f - r.tarifa_neta) > 1) {
-      o.neta = `Guardada: ${fmt.format(r.tarifa_neta)}. Fórmula (bruta × (1 − desc.)): ${fmt.format(f)}.`;
-    }
-  }
-  if (esNumero(r.tarifa_neta) && esNumero(r.cantidad) && esNumero(r.valor_total)) {
-    const f = redondear(r.tarifa_neta * r.cantidad, 2);
-    if (Math.abs(f - r.valor_total) > 1) {
-      o.total = `Guardado: ${fmt.format(r.valor_total)}. Fórmula (neta × cantidad): ${fmt.format(f)}.`;
-    }
-  }
-  return o;
+// Tarifa neta heredada del Sheets que no sale de la fórmula (redondeo del descuento).
+// Se muestra, no se corrige sola.
+function obsNeta(r) {
+  if (!esNumero(r.tarifa_bruta) || !esNumero(r.descuento) || !esNumero(r.tarifa_neta)) return '';
+  const f = redondear(r.tarifa_bruta * (1 - r.descuento / 100), 2);
+  return Math.abs(f - r.tarifa_neta) > 1
+    ? `Guardada: ${fmt.format(r.tarifa_neta)}. Fórmula (bruta × (1 − desc.)): ${fmt.format(f)}. Se recalcula si editas tarifa bruta o descuento.`
+    : '';
 }
 
 function mensajeError(error) {
@@ -243,7 +375,7 @@ async function iniciar() {
   pintarBarra(document.getElementById('barra'), usuario, 'compras');
 
   createApp({
-    components: { CeldaNum },
+    components: { CeldaNum, SeleccionMultiple, Combo },
 
     data: () => ({
       ENUMS,
@@ -255,27 +387,23 @@ async function iniciar() {
       campanas: [],
       proveedores: [],
       filas: [],
-      filaActiva: null,
-      filtros: { mercado: '', mes: '', proveedor: '', tipoCosto: '' },
+      filtros: { mercado: '', meses: [], proveedores: [], tiposCosto: [] },
+      borrador: null,         // compra nueva en el panel lateral
     }),
 
     computed: {
       soloLectura() { return this.usuario.rol === 'LECTURA'; },
 
-      misMercados() {
-        return this.mercados.filter(m => this.misMercadoIds.includes(m.id));
-      },
+      misMercados() { return this.mercados.filter(m => this.misMercadoIds.includes(m.id)); },
       mercadosPorId() { return new Map(this.mercados.map(m => [m.id, m])); },
       campanasPorId() { return new Map(this.campanas.map(c => [c.id, c])); },
       proveedoresPorId() { return new Map(this.proveedores.map(p => [p.id, p])); },
 
-      campanasPorMercado() {
-        const g = new Map();
-        for (const c of this.campanas) {
-          if (!g.has(c.mercado_id)) g.set(c.mercado_id, []);
-          g.get(c.mercado_id).push(c);
-        }
-        return g;
+      ctx() {
+        return {
+          proveedoresPorId: this.proveedoresPorId,
+          campanaOoh: (mercadoId) => this.campanaOoh(mercadoId),
+        };
       },
 
       eyebrow() {
@@ -283,12 +411,14 @@ async function iniciar() {
         return m ? `${m.codigo} · ${m.nombre}` : 'Todos mis mercados';
       },
 
-      proveedoresFiltro() {
-        const enMercado = this.filtros.mercado
+      opcionesMes() { return this.meses.map(m => ({ valor: m, etiqueta: this.nombreMes(m) })); },
+      opcionesTipoCosto() { return ENUMS.tipo_costo.map(t => ({ valor: t, etiqueta: t })); },
+      opcionesProveedor() {
+        const lista = this.filtros.mercado
           ? this.proveedores.filter(p => p.mercado_id === this.filtros.mercado)
           : this.proveedores.filter(p => this.misMercadoIds.includes(p.mercado_id));
-        return enMercado.map(p => ({
-          id: p.id,
+        return lista.map(p => ({
+          valor: p.id,
           etiqueta: this.filtros.mercado ? p.nombre : `${p.nombre} (${this.codigoMercado(p.mercado_id)})`,
         }));
       },
@@ -309,74 +439,78 @@ async function iniciar() {
         return [...s].sort();
       },
 
-      // Las filas nuevas sin guardar siempre se ven, aunque no cumplan los filtros.
       visibles() {
         const f = this.filtros;
+        const prov = new Set(f.proveedores);
+        const tipos = new Set(f.tiposCosto);
         return this.filas.filter(r => {
-          if (!r.id) return true;
           if (f.mercado && r.mercado_id !== f.mercado) return false;
-          if (f.proveedor && r.proveedor_id !== f.proveedor) return false;
-          if (f.tipoCosto && r.tipo_costo !== f.tipoCosto) return false;
-          if (f.mes) {
+          if (prov.size && !prov.has(r.proveedor_id)) return false;
+          if (tipos.size && !tipos.has(r.tipo_costo)) return false;
+          if (f.meses.length) {
             if (!r.fecha_inicio || !r.fecha_fin) return false;
-            if (r.fecha_inicio > `${f.mes}-31` || r.fecha_fin < `${f.mes}-01`) return false;
+            const cruza = f.meses.some(m => r.fecha_inicio <= `${m}-31` && r.fecha_fin >= `${m}-01`);
+            if (!cruza) return false;
           }
           return true;
         });
-      },
-
-      // Valores ya usados, para autocompletar los campos de texto libre.
-      sugerencias() {
-        const unicos = (c) => [...new Set(this.filas.map(r => r[c]).filter(Boolean))].sort();
-        return { cliente: unicos('cliente'), formato: unicos('formato'), ciudad: unicos('ciudad') };
       },
 
       sumaVisible() {
         return this.visibles.reduce((s, r) => s + (esNumero(r.valor_total) ? r.valor_total : 0), 0);
       },
 
+      // Formatos ya guardados en cada mercado (lo que hay en la base, no lo que se está escribiendo).
+      formatosPorMercado() {
+        const g = new Map();
+        for (const r of this.filas) {
+          if (!r._formatoGuardado) continue;
+          if (!g.has(r.mercado_id)) g.set(r.mercado_id, new Set());
+          g.get(r.mercado_id).add(r._formatoGuardado);
+        }
+        return g;
+      },
+
+      sugerencias() {
+        const unicos = (c) => [...new Set(this.filas.map(r => r[c]).filter(Boolean))].sort();
+        return { cliente: unicos('cliente'), ciudad: unicos('ciudad') };
+      },
+
       errores() {
         const m = new Map();
-        for (const r of this.filas) m.set(r._k, validar(r, this.campanasPorId, this.proveedoresPorId));
+        for (const r of this.filas) m.set(r._k, validar(r, this.ctx));
         return m;
       },
 
-      obs() {
-        const m = new Map();
-        for (const r of this.filas) m.set(r._k, observaciones(r));
-        return m;
-      },
+      netasObservadas() { return this.visibles.filter(r => obsNeta(r)).length; },
 
-      observadasVisibles() {
-        return this.visibles.filter(r => { const o = this.obs.get(r._k); return o.neta || o.total; }).length;
-      },
-
-      mercadoParaCrear() {
-        return this.filtros.mercado || null;
-      },
-      puedeCrear() { return !this.soloLectura && !this.cargando && !!this.mercadoParaCrear; },
+      puedeCrear() { return !this.soloLectura && !this.cargando && !!this.filtros.mercado && !!this.campanaOoh(this.filtros.mercado); },
       motivoNoCrear() {
         if (this.soloLectura) return 'Tu rol es de solo lectura';
-        if (!this.mercadoParaCrear) return 'Elige un mercado para crear la compra';
+        if (!this.filtros.mercado) return 'Elige un mercado para crear la compra';
+        if (!this.campanaOoh(this.filtros.mercado)) return 'Este mercado no tiene campaña OOH configurada';
         return '';
       },
 
       estadoGlobal() {
         if (this.cargando) return { clase: '', texto: '' };
         const guardando = this.filas.filter(r => r._guardando).length;
-        const conError = this.filas.filter(r => r._estado && r._estado.clase === 'err').length;
+        const pendientes = this.filas.filter(r => r._estado && ['err', 'prop'].includes(r._estado.clase) && !r._guardando).length;
         if (guardando) return { clase: 'prop', texto: 'Guardando…' };
-        if (conError) return { clase: 'err', texto: `${conError} ${conError === 1 ? 'fila sin guardar' : 'filas sin guardar'}` };
+        if (pendientes) return { clase: 'err', texto: `${pendientes} ${pendientes === 1 ? 'fila sin guardar' : 'filas sin guardar'}` };
         if (this.soloLectura) return { clase: '', texto: 'Solo lectura' };
         return { clase: 'ok', texto: 'Todo guardado' };
       },
+
+      // ---- panel lateral
+      erroresBorrador() { return this.borrador ? validar(this.borrador, this.ctx) : {}; },
+      codigoPrevisto() { return this.borrador ? this.siguienteCodigoLocal(this.borrador.mercado_id) : ''; },
     },
 
     watch: {
       'filtros.mercado'() {
-        if (this.filtros.proveedor && !this.proveedoresFiltro.some(p => p.id === this.filtros.proveedor)) {
-          this.filtros.proveedor = '';
-        }
+        const validos = new Set(this.opcionesProveedor.map(o => o.valor));
+        this.filtros.proveedores = this.filtros.proveedores.filter(id => validos.has(id));
       },
     },
 
@@ -385,52 +519,82 @@ async function iniciar() {
       fmtEntero(x) { return fmt.format(x); },
       nombreMes(k) { const [y, m] = k.split('-'); return `${MESES[Number(m) - 1]} ${y}`; },
       codigoMercado(id) { const m = this.mercadosPorId.get(id); return m ? m.codigo : '?'; },
+      campanaOoh(mercadoId) { const m = this.mercadosPorId.get(mercadoId); return m ? m.campana_ooh_id : null; },
+      nombreCampana(r) {
+        const c = this.campanasPorId.get(this.campanaOoh(r.mercado_id) || r.campana_id);
+        return c ? c.nombre_unico : '';
+      },
+      obsNeta,
 
       proveedoresDe(r) {
         return this.proveedores.filter(p => p.mercado_id === r.mercado_id && (p.activo || p.id === r.proveedor_id));
       },
+      formatosDe(mercadoId) { return [...(this.formatosPorMercado.get(mercadoId) || [])].sort(); },
 
-      // Hay ~330 campañas por mercado: la lista completa solo se arma en la fila
-      // que se está editando; las demás llevan solo la opción elegida.
-      opcionesCampana(r) {
-        if (r._k === this.filaActiva) {
-          return (this.campanasPorMercado.get(r.mercado_id) || [])
-            .filter(c => c.activo || c.id === r.campana_id);
-        }
-        const c = this.campanasPorId.get(r.campana_id);
-        return c ? [c] : [];
-      },
-
-      msgErr(r, campo) {
-        if (!r._intento) return '';
-        return this.errores.get(r._k)[campo] || '';
-      },
+      msgErr(r, campo) { return this.errores.get(r._k)[campo] || ''; },
       claseErr(r, campo) { return this.msgErr(r, campo) ? 'err' : ''; },
 
-      // Recalcula lo derivado de lo que se acaba de editar. Lo demás se respeta:
-      // así una compra con valores heredados del Sheets no cambia si solo se toca
-      // la ubicación o una fecha.
+      // Formato que no existe en el mercado y que aún no se confirmó como nuevo.
+      avisoFormato(r) {
+        const f = normFormato(r.formato);
+        if (!f || f === r._formatoNuevoOk) return null;
+        const existentes = this.formatosPorMercado.get(r.mercado_id) || new Set();
+        if (existentes.has(f)) return null;
+        let parecido = null, mejor = Infinity;
+        for (const e of existentes) {
+          const d = distancia(compacto(f), compacto(e));
+          if (d < mejor) { mejor = d; parecido = e; }
+        }
+        if (mejor > Math.max(2, Math.floor(compacto(f).length / 4))) parecido = null;
+        return { formato: f, parecido };
+      },
+      usarFormato(r, valor) {
+        r.formato = valor;
+        if (r.id) this.guardar(r);
+      },
+      confirmarFormatoNuevo(r) {
+        r._formatoNuevoOk = normFormato(r.formato);
+        if (r.id) this.guardar(r);
+      },
+
+      // Recalcula lo derivado de lo que se acaba de editar. La tarifa neta solo
+      // cambia si se edita bruta o descuento; el valor total, solo si es automático.
       recalcular(r, desde) {
         if (desde === 'neta' && esNumero(r.tarifa_bruta) && esNumero(r.descuento)) {
           r.tarifa_neta = redondear(r.tarifa_bruta * (1 - r.descuento / 100), 2);
         }
-        if (esNumero(r.tarifa_neta) && esNumero(r.cantidad)) {
+        if (!r.valor_total_manual && esNumero(r.tarifa_neta) && esNumero(r.cantidad)) {
           r.valor_total = redondear(r.tarifa_neta * r.cantidad, 2);
         }
+      },
+      formula(r) {
+        return esNumero(r.tarifa_neta) && esNumero(r.cantidad) ? redondear(r.tarifa_neta * r.cantidad, 2) : null;
+      },
+      pistaFormula(r) {
+        const f = this.formula(r);
+        return `Valor escrito a mano. Fórmula (tarifa neta × cantidad): ${f === null ? '—' : fmt.format(f)}`;
+      },
+
+      // Doble clic: el valor total pasa a manual y se edita.
+      async aManual(r, selector) {
+        if (this.soloLectura || r.valor_total_manual) return;
+        r.valor_total_manual = true;
+        await nextTick();
+        const input = document.querySelector(selector.startsWith('#p-') ? `${PANEL_ACTIVO} ${selector}` : selector);
+        if (input) { input.focus(); input.select(); }
+      },
+      // ↺: vuelve a automático, recalcula y (en la tabla) guarda.
+      aAuto(r) {
+        r.valor_total_manual = false;
+        this.recalcular(r, 'total');
+        if (r.id) this.guardar(r);
       },
 
       alSalirDeCelda(ev) {
         const tr = ev.target.closest('tr[data-k]');
         if (!tr) return;
         const r = this.filas.find(x => x._k === Number(tr.dataset.k));
-        if (!r) return;
-        const destino = ev.relatedTarget && ev.relatedTarget.closest && ev.relatedTarget.closest('tr[data-k]');
-        const sigueEnLaFila = destino === tr;
-
-        // Fila nueva: se guarda cuando se sale de la fila (o antes, si ya está completa).
-        if (!r.id && sigueEnLaFila && Object.keys(this.errores.get(r._k)).length) return;
-        if (!r.id) r._intento = true;
-        this.guardar(r);
+        if (r) this.guardar(r);
       },
 
       async guardar(r) {
@@ -439,15 +603,18 @@ async function iniciar() {
         const errs = this.errores.get(r._k);
         const n = Object.keys(errs).length;
         if (n) {
-          r._intento = true;
           r._estado = { clase: 'err', texto: n === 1 ? '1 error' : `${n} errores`, detalle: Object.values(errs).join(' · ') };
           return;
         }
+        if (this.avisoFormato(r)) {
+          r._estado = { clase: 'prop', texto: 'formato nuevo', detalle: 'Confirma el formato para guardar' };
+          return;
+        }
 
-        const payload = aPayload(r);
+        const payload = aPayload(r, this.campanaOoh(r.mercado_id));
         const snap = JSON.stringify(payload);
         if (snap === r._snap) {
-          if (r._estado && r._estado.clase === 'err') r._estado = null;
+          if (r._estado && r._estado.clase !== 'ok') r._estado = null;
           return;
         }
         if (r._guardando) { r._repetir = true; return; }
@@ -457,25 +624,13 @@ async function iniciar() {
         let error = null;
 
         try {
-          if (r.id) {
-            const { mercado_id, codigo, ...cambios } = payload;
-            const res = await sb.from('compras')
-              .update({ ...cambios, actualizado_en: new Date().toISOString() })
-              .eq('id', r.id)
-              .select('id');
-            error = res.error;
-            if (!error && res.data.length === 0) error = { code: '42501' };
-          } else {
-            let res = await sb.from('compras').insert(payload).select('id').single();
-            if (res.error && res.error.code === '23505') {
-              // Alguien más tomó el código mientras tanto: se pide el siguiente a la base.
-              r.codigo = await this.siguienteCodigoEnBase(r.mercado_id);
-              payload.codigo = r.codigo;
-              res = await sb.from('compras').insert(payload).select('id').single();
-            }
-            error = res.error;
-            if (!error) r.id = res.data.id;
-          }
+          const { mercado_id, codigo, ...cambios } = payload;
+          const res = await sb.from('compras')
+            .update({ ...cambios, actualizado_en: new Date().toISOString() })
+            .eq('id', r.id)
+            .select('id');
+          error = res.error;
+          if (!error && res.data.length === 0) error = { code: '42501' };
         } catch (e) {
           error = e;
         }
@@ -485,7 +640,10 @@ async function iniciar() {
           r._estado = { clase: 'err', texto: 'error', detalle: mensajeError(error) };
           console.error('No se guardó la compra', r.codigo, error);
         } else {
-          r._snap = JSON.stringify(aPayload(r));
+          r._snap = snap;
+          r.formato = payload.formato;
+          r.campana_id = payload.campana_id;
+          r._formatoGuardado = payload.formato;
           const estado = { clase: 'ok', texto: 'guardado' };
           r._estado = estado;
           setTimeout(() => { if (r._estado === estado) r._estado = null; }, 2500);
@@ -504,42 +662,90 @@ async function iniciar() {
         return String(max + 1).padStart(3, '0');
       },
 
+      // El código se pide a la base al guardar: otra persona pudo crear compras mientras tanto.
       async siguienteCodigoEnBase(mercadoId) {
         const filas = await traerTodo(() => sb.from('compras').select('codigo').eq('mercado_id', mercadoId).order('id'));
         let max = 0;
         for (const f of filas) { const n = parseInt(f.codigo, 10); if (Number.isFinite(n) && n > max) max = n; }
-        for (const r of this.filas) {
-          if (r.mercado_id === mercadoId && !r.id) { const n = parseInt(r.codigo, 10); if (n > max) max = n; }
-        }
         return String(max + 1).padStart(3, '0');
       },
 
-      async nuevaCompra() {
+      // ---------------------------------------------------------------- Panel lateral
+
+      async abrirPanel() {
         if (!this.puedeCrear) return;
-        const r = filaNueva(this.mercadoParaCrear, this.siguienteCodigoLocal(this.mercadoParaCrear));
-        this.filas.push(r);
-        this.filaActiva = r._k;
+        this.borrador = borradorNuevo(this.filtros.mercado, this.campanaOoh(this.filtros.mercado));
         await nextTick();
-        const tr = document.querySelector(`#app tr[data-k="${r._k}"]`);
-        if (tr) {
-          tr.scrollIntoView({ block: 'nearest' });
-          const primero = tr.querySelector('input, select');
+        const primero = document.querySelector(`${PANEL_ACTIVO} #p-cliente`);
+        if (primero) primero.focus();
+      },
+
+      cerrarPanel() {
+        if (this.borrador && this.borrador._guardando) return;
+        this.borrador = null;
+      },
+
+      tocar(campo) { if (this.borrador) this.borrador._tocados[campo] = true; },
+      errPanel(campo) {
+        const b = this.borrador;
+        if (!b || !(b._intento || b._tocados[campo])) return '';
+        return this.erroresBorrador[campo] || '';
+      },
+
+      async guardarBorrador() {
+        const b = this.borrador;
+        if (!b || b._guardando) return;
+        b._intento = true;
+        b._error = '';
+
+        const campos = Object.keys(this.erroresBorrador);
+        if (campos.length || this.avisoFormato(b)) {
+          await nextTick();
+          const primero = document.querySelector(
+            ['.campo.err input', '.campo.err select', '.aviso-formato button'].map(x => `${PANEL_ACTIVO} ${x}`).join(', '));
           if (primero) primero.focus();
+          return;
+        }
+
+        b._guardando = true;
+        try {
+          const payload = aPayload(b, this.campanaOoh(b.mercado_id));
+          payload.codigo = await this.siguienteCodigoEnBase(b.mercado_id);
+          let res = await sb.from('compras').insert(payload).select(COLUMNAS_COMPRA).single();
+          if (res.error && res.error.code === '23505') {
+            payload.codigo = await this.siguienteCodigoEnBase(b.mercado_id);
+            res = await sb.from('compras').insert(payload).select(COLUMNAS_COMPRA).single();
+          }
+          if (res.error) throw res.error;
+
+          const r = desdeBase(res.data);
+          r._snap = JSON.stringify(aPayload(r, this.campanaOoh(r.mercado_id)));
+          r._estado = { clase: 'ok', texto: 'creada' };
+          this.filas.push(r);
+          this.borrador = null;
+
+          await nextTick();
+          const tr = document.querySelector(`#app tr[data-k="${r._k}"]`);
+          if (tr) tr.scrollIntoView({ block: 'nearest' });
+          const fila = this.filas.find(x => x._k === r._k);
+          setTimeout(() => { if (fila && fila._estado && fila._estado.texto === 'creada') fila._estado = null; }, 4000);
+        } catch (e) {
+          console.error('No se creó la compra', e);
+          b._error = 'No se pudo guardar: ' + mensajeError(e);
+          b._guardando = false;
         }
       },
 
-      descartar(r) {
-        this.filas = this.filas.filter(x => x !== r);
-      },
+      // ---------------------------------------------------------------- Carga
 
       async cargar() {
         try {
           const [mercados, mis, propios, campanas, proveedores, compras] = await Promise.all([
-            traerTodo(() => sb.from('mercados').select('id, codigo, nombre, activo').order('id')),
+            traerTodo(() => sb.from('mercados').select('id, codigo, nombre, activo, campana_ooh_id').order('id')),
             sb.rpc('fn_mis_mercados'),
             traerTodo(() => sb.from('usuario_mercados').select('mercado_id')
               .eq('usuario_id', this.usuario.id).order('mercado_id')),  // un ADMIN ve las de todos
-            traerTodo(() => sb.from('campanas').select('id, mercado_id, nombre_unico, activo').order('nombre_unico')),
+            traerTodo(() => sb.from('campanas').select('id, mercado_id, nombre_unico').order('id')),
             traerTodo(() => sb.from('proveedores').select('id, mercado_id, nombre, activo').order('nombre')),
             traerTodo(() => sb.from('compras').select(COLUMNAS_COMPRA).order('mercado_id').order('codigo')),
           ]);
@@ -549,7 +755,11 @@ async function iniciar() {
           this.misMercadoIds = (mis.data || []).map(x => (typeof x === 'object' ? Object.values(x)[0] : x)).map(Number);
           this.campanas = campanas;
           this.proveedores = proveedores;
-          this.filas = compras.map(desdeBase);
+          this.filas = compras.map(c => {
+            const r = desdeBase(c);
+            r._snap = JSON.stringify(aPayload(r, this.campanaOoh(r.mercado_id)));
+            return r;
+          });
 
           // Mercado por defecto: el único que tenga, o el primero asignado (un ADMIN ve todos).
           if (this.misMercados.length === 1) this.filtros.mercado = this.misMercados[0].id;
@@ -571,9 +781,12 @@ async function iniciar() {
 
     mounted() {
       this.cargar();
+      document.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape' && this.borrador && !document.querySelector('.multi.abierto')) this.cerrarPanel();
+      });
       window.addEventListener('beforeunload', (ev) => {
-        const pendientes = this.filas.some(r => r._guardando || (r._estado && r._estado.clase === 'err') || (!r.id));
-        if (pendientes) { ev.preventDefault(); ev.returnValue = ''; }
+        const pendientes = this.filas.some(r => r._guardando || (r._estado && ['err', 'prop'].includes(r._estado.clase)));
+        if (pendientes || this.borrador) { ev.preventDefault(); ev.returnValue = ''; }
       });
     },
   }).mount('#app');

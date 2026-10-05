@@ -115,6 +115,15 @@ JetBrains Mono 10.5 px, padding 2 × 8, radio completo. Validado en `--ok` sobre
 ### Calendario
 Celdas de 28 px de ancho, 30 px de alto. Encabezado de día 9.5 px en dos líneas (día de semana, número). Fines de semana con fondo `#F8F6F0` en cuerpo y `#26241E` en encabezado. Cambio de mes con borde izquierdo `#CFCABB`. Día activo marcado con `--y`; día compartido entre varias campañas con rayado diagonal `--y` / `#D6D1C3`.
 
+### Panel lateral
+Para crear registros nuevos. Entra desde la derecha sobre la pantalla, con un fondo `--ink` al 28 %. Ancho máximo 560 px, fondo `--surface`, borde izquierdo 1 px `--k` y superior 4 px `--k`, sin sombra. Encabezado con eyebrow y título condensado de 26 px. Los campos siguen el orden de las columnas de la tabla, en dos columnas; los calculados en `--calc`. El error se marca en el campo (fondo `--err-wash`, línea inferior `--err`) con el mensaje debajo en 11.5 px. Pie fijo con "Cancelar" y el botón primario de guardar. Esc cierra.
+
+### Filtro de selección múltiple
+Mismo aspecto que un input fuera de tabla. Muestra "Todos" si no hay nada marcado, el nombre si hay uno y "N seleccionados" si hay varios; con selección activa, borde `--k` y texto bold. La lista lleva casillas y un "Limpiar" al pie.
+
+### Combo
+Input con lista de valores ya usados que acepta texto nuevo (ej. formato). Un valor nuevo se marca en `--warn-wash` y pide confirmación antes de guardar, sugiriendo el existente más parecido.
+
 ### Login
 Dos columnas: izquierda `--k` con la marca y una frase en `#A39D8B`; derecha el formulario centrado, máximo 520 px.
 
@@ -125,13 +134,13 @@ Dos columnas: izquierda `--k` con la marca y una frase en `#A39D8B`; derecha el 
 3. **Las celdas calculadas se ven distintas.** Fondo `--calc`. El usuario tiene que saber de un vistazo qué puede editar y qué no.
 4. **Los números siempre en monoespaciada y alineados a la derecha.** Sin excepciones, incluidos códigos y fechas.
 5. **Los errores se marcan en la celda**, no solo en un mensaje general. Fondo rojo claro y línea inferior roja.
-6. **Nada de modales para capturar.** Las compras y los materiales se editan en tabla. Los modales solo para confirmaciones.
+6. **Lo existente se edita en tabla; lo nuevo se crea en panel lateral.** Las compras y los materiales que ya existen se editan en su fila. Los nuevos se crean en un panel que entra desde la derecha y no existen hasta que se guardan. Los modales siguen siendo solo para confirmaciones.
 
 ## Pantallas de la Fase 2 (interfaz interna)
 
 | Pantalla | Equivale a | Componentes |
 |---|---|---|
-| Compras | Flow | Card con tabla editable; una fila por compra; filtros por mes, proveedor, tipo de costo; KPIs de total y cantidad |
+| Compras | Flow | Card con tabla editable; una fila por compra; alta en panel lateral; filtros de selección múltiple por mes, proveedor, tipo de costo; KPIs de total y cantidad |
 | Materiales | Tracking | Card con tabla editable; una fila por material; columnas calculadas de compra en `--calc`; calendario a la derecha; validación de fechas en celda |
 | Consulta | Vista | Tabla de solo lectura con los mismos filtros; exportar a CSV |
 | Inversión | Inversion_total / semanal / diaria | Tres pestañas sobre la misma card; totales en fila negra |

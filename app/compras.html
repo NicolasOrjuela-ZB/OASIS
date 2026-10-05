@@ -23,7 +23,7 @@
         <h2>Flow</h2>
         <span class="estado-global mono" :class="estadoGlobal.clase">{{ estadoGlobal.texto }}</span>
         <button class="btn p" type="button" style="margin-left:auto"
-                :disabled="!puedeCrear" :title="motivoNoCrear" @click="nuevaCompra">Nueva compra</button>
+                :disabled="!puedeCrear" :title="motivoNoCrear" @click="abrirPanel">Nueva compra</button>
       </div>
 
       <!-- Filtros -->
@@ -37,24 +37,15 @@
         </div>
         <div class="campo">
           <label for="f-mes">Mes</label>
-          <select id="f-mes" v-model="filtros.mes">
-            <option value="">Todos</option>
-            <option v-for="m in meses" :key="m" :value="m">{{ nombreMes(m) }}</option>
-          </select>
+          <seleccion-multiple id="f-mes" v-model="filtros.meses" :opciones="opcionesMes"></seleccion-multiple>
         </div>
         <div class="campo">
           <label for="f-proveedor">Proveedor</label>
-          <select id="f-proveedor" v-model="filtros.proveedor">
-            <option value="">Todos</option>
-            <option v-for="p in proveedoresFiltro" :key="p.id" :value="p.id">{{ p.etiqueta }}</option>
-          </select>
+          <seleccion-multiple id="f-proveedor" v-model="filtros.proveedores" :opciones="opcionesProveedor"></seleccion-multiple>
         </div>
         <div class="campo">
           <label for="f-tipo">Tipo de costo</label>
-          <select id="f-tipo" v-model="filtros.tipoCosto">
-            <option value="">Todos</option>
-            <option v-for="t in ENUMS.tipo_costo" :key="t" :value="t">{{ t }}</option>
-          </select>
+          <seleccion-multiple id="f-tipo" v-model="filtros.tiposCosto" :opciones="opcionesTipoCosto"></seleccion-multiple>
         </div>
       </div>
 
@@ -70,10 +61,9 @@
         </div>
       </div>
 
-      <div v-if="observadasVisibles > 0" class="alerta aviso" style="margin:14px 14px 0">
-        {{ observadasVisibles }} {{ observadasVisibles === 1 ? 'compra tiene' : 'compras tienen' }}
-        tarifa neta o valor total distintos a la fórmula (celdas en amarillo; pasa el cursor para ver el detalle).
-        Se conserva el valor guardado hasta que edites tarifa bruta, descuento o cantidad de esa fila.
+      <div v-if="netasObservadas > 0" class="alerta aviso" style="margin:14px 14px 0">
+        {{ netasObservadas }} {{ netasObservadas === 1 ? 'compra tiene' : 'compras tienen' }} una tarifa neta
+        que no sale exacta de la fórmula, por redondeo del descuento en el Sheets (celdas en amarillo; pasa el cursor para ver el detalle).
       </div>
 
       <!-- Tabla -->
@@ -84,7 +74,7 @@
             <tr>
               <th class="pegada c0 calc">Código</th>
               <th class="pegada c1">Cliente</th>
-              <th>Campaña</th>
+              <th class="calc">Campaña</th>
               <th>Tipo compra</th>
               <th>Proveedor</th>
               <th>Medio</th>
@@ -97,7 +87,7 @@
               <th class="num calc">Tarifa neta</th>
               <th class="num">Cantidad</th>
               <th class="num">Nro. sem.</th>
-              <th class="num calc">Valor total</th>
+              <th class="num calc" title="Automático: tarifa neta × cantidad. Doble clic en la celda para escribirlo a mano.">Valor total</th>
               <th class="num">Fecha inicio</th>
               <th class="num">Fecha fin</th>
               <th class="estado-col"></th>
@@ -107,19 +97,14 @@
             <tr v-if="visibles.length === 0">
               <td colspan="19" class="vacio">No hay compras con estos filtros.</td>
             </tr>
-            <tr v-for="r in visibles" :key="r._k" :data-k="r._k" @pointerdown="filaActiva = r._k" @focusin="filaActiva = r._k" :class="{ nueva: !r.id }">
+            <tr v-for="r in visibles" :key="r._k" :data-k="r._k">
               <td class="pegada c0 calc mono num">
                 <span v-if="!filtros.mercado" class="mk">{{ codigoMercado(r.mercado_id) }}</span>{{ r.codigo }}
               </td>
               <td class="pegada c1" :class="claseErr(r, 'cliente')" :title="msgErr(r, 'cliente')">
                 <input v-model.trim="r.cliente" :disabled="soloLectura" list="dl-clientes" class="ancho-s">
               </td>
-              <td :class="claseErr(r, 'campana_id')" :title="msgErr(r, 'campana_id')">
-                <select v-model="r.campana_id" :disabled="soloLectura" class="ancho-l">
-                  <option :value="null"></option>
-                  <option v-for="c in opcionesCampana(r)" :key="c.id" :value="c.id">{{ c.nombre_unico }}</option>
-                </select>
-              </td>
+              <td class="calc" :class="claseErr(r, 'campana_id')" :title="msgErr(r, 'campana_id') || 'La fija el mercado'">{{ nombreCampana(r) }}</td>
               <td :class="claseErr(r, 'tipo_compra')" :title="msgErr(r, 'tipo_compra')">
                 <select v-model="r.tipo_compra" :disabled="soloLectura">
                   <option :value="null"></option>
@@ -144,8 +129,9 @@
                   <option v-for="t in ENUMS.tipo_costo" :key="t" :value="t">{{ t }}</option>
                 </select>
               </td>
-              <td :class="claseErr(r, 'formato')" :title="msgErr(r, 'formato')">
-                <input v-model.trim="r.formato" :disabled="soloLectura" list="dl-formatos" class="ancho-m">
+              <td :class="[claseErr(r, 'formato'), { nuevo: avisoFormato(r) }]"
+                  :title="msgErr(r, 'formato') || (avisoFormato(r) ? 'Formato que no existe en este mercado: confírmalo a la derecha' : '')">
+                <combo v-model="r.formato" :opciones="formatosDe(r.mercado_id)" :disabled="soloLectura" class="ancho-m"></combo>
               </td>
               <td :class="claseErr(r, 'ubicacion')" :title="msgErr(r, 'ubicacion')">
                 <input v-model.trim="r.ubicacion" :disabled="soloLectura" class="ancho-l">
@@ -161,7 +147,7 @@
                 <celda-num v-model="r.descuento" :disabled="soloLectura" :decimales="2" class="ancho-xs"
                            @editado="recalcular(r, 'neta')"></celda-num>
               </td>
-              <td class="calc mono num" :class="{ obs: obs.get(r._k).neta }" :title="obs.get(r._k).neta">{{ fmtNumero(r.tarifa_neta) }}</td>
+              <td class="calc mono num" :class="{ obs: obsNeta(r) }" :title="obsNeta(r)">{{ fmtNumero(r.tarifa_neta) }}</td>
               <td :class="claseErr(r, 'cantidad')" :title="msgErr(r, 'cantidad')">
                 <celda-num v-model="r.cantidad" :disabled="soloLectura" :decimales="0" class="ancho-xs"
                            @editado="recalcular(r, 'total')"></celda-num>
@@ -169,7 +155,18 @@
               <td :class="claseErr(r, 'nro_semanas')" :title="msgErr(r, 'nro_semanas')">
                 <celda-num v-model="r.nro_semanas" :disabled="soloLectura" :decimales="2" class="ancho-xs"></celda-num>
               </td>
-              <td class="calc mono num" :class="{ obs: obs.get(r._k).total }" :title="obs.get(r._k).total">{{ fmtNumero(r.valor_total) }}</td>
+              <!-- Valor total: automático en --calc; doble clic lo vuelve manual; ↺ lo devuelve -->
+              <td v-if="!r.valor_total_manual" class="calc mono num total-auto"
+                  :title="soloLectura ? 'Tarifa neta × cantidad' : 'Automático: tarifa neta × cantidad. Doble clic para escribirlo a mano.'"
+                  @dblclick="aManual(r, `#app tr[data-k='${r._k}'] .total-manual input`)">{{ fmtNumero(r.valor_total) }}</td>
+              <td v-else class="total-manual" :class="claseErr(r, 'valor_total')"
+                  :title="msgErr(r, 'valor_total') || pistaFormula(r)">
+                <div class="con-control">
+                  <button v-if="!soloLectura" type="button" class="reset" title="Volver a automático (tarifa neta × cantidad)"
+                          @click="aAuto(r)">↺</button>
+                  <celda-num v-model="r.valor_total" :disabled="soloLectura" :decimales="2"></celda-num>
+                </div>
+              </td>
               <td :class="claseErr(r, 'fecha_inicio')" :title="msgErr(r, 'fecha_inicio')">
                 <input type="date" v-model="r.fecha_inicio" :disabled="soloLectura" class="fecha">
               </td>
@@ -177,9 +174,13 @@
                 <input type="date" v-model="r.fecha_fin" :disabled="soloLectura" class="fecha">
               </td>
               <td class="estado-col">
-                <span v-if="r._estado" class="pill" :class="r._estado.clase" :title="r._estado.detalle">{{ r._estado.texto }}</span>
-                <button v-if="!r.id && !r._guardando" class="descartar" type="button" title="Descartar esta fila sin guardar"
-                        @mousedown.prevent @click="descartar(r)">×</button>
+                <div v-if="avisoFormato(r) && !soloLectura" class="aviso-celda">
+                  <span>¿Formato nuevo?</span>
+                  <button v-if="avisoFormato(r).parecido" type="button" class="mini"
+                          @click="usarFormato(r, avisoFormato(r).parecido)">Usar {{ avisoFormato(r).parecido }}</button>
+                  <button type="button" class="mini" @click="confirmarFormatoNuevo(r)">Sí, es nuevo</button>
+                </div>
+                <span v-else-if="r._estado" class="pill" :class="r._estado.clase" :title="r._estado.detalle">{{ r._estado.texto }}</span>
               </td>
             </tr>
           </tbody>
@@ -196,8 +197,160 @@
       </div>
     </section>
 
+    <!-- Panel lateral: compra nueva. No se crea nada hasta "Guardar compra". -->
+    <transition name="panel">
+      <div v-if="borrador" class="panel-fondo" @pointerdown.self="cerrarPanel">
+        <aside class="panel" role="dialog" aria-labelledby="panel-titulo">
+          <header class="panel-cab">
+            <div>
+              <div class="eyebrow">{{ codigoMercado(borrador.mercado_id) }} · compra {{ codigoPrevisto }}</div>
+              <h2 id="panel-titulo">Nueva compra</h2>
+            </div>
+            <button type="button" class="cerrar" title="Cancelar (Esc)" @click="cerrarPanel">×</button>
+          </header>
+
+          <form class="panel-cuerpo" id="form-compra" @submit.prevent="guardarBorrador" novalidate>
+            <div class="campo calc">
+              <label>Código</label>
+              <input :value="codigoPrevisto" disabled class="mono" title="Se asigna al guardar: el siguiente libre del mercado">
+            </div>
+            <div class="campo" :class="{ err: errPanel('cliente') }">
+              <label for="p-cliente">Cliente</label>
+              <input id="p-cliente" v-model.trim="borrador.cliente" list="dl-clientes" @blur="tocar('cliente')">
+              <div class="campo-error" v-if="errPanel('cliente')">{{ errPanel('cliente') }}</div>
+            </div>
+            <div class="campo ancho-2 calc" :class="{ err: errPanel('campana_id') }">
+              <label>Campaña</label>
+              <input :value="nombreCampana(borrador)" disabled title="La fija el mercado">
+              <div class="campo-error" v-if="errPanel('campana_id')">{{ errPanel('campana_id') }}</div>
+            </div>
+            <div class="campo" :class="{ err: errPanel('tipo_compra') }">
+              <label for="p-tipo-compra">Tipo de compra</label>
+              <select id="p-tipo-compra" v-model="borrador.tipo_compra" @blur="tocar('tipo_compra')">
+                <option :value="null"></option>
+                <option v-for="t in ENUMS.tipo_compra" :key="t" :value="t">{{ t }}</option>
+              </select>
+              <div class="campo-error" v-if="errPanel('tipo_compra')">{{ errPanel('tipo_compra') }}</div>
+            </div>
+            <div class="campo" :class="{ err: errPanel('proveedor_id') }">
+              <label for="p-proveedor">Proveedor</label>
+              <select id="p-proveedor" v-model="borrador.proveedor_id" @blur="tocar('proveedor_id')">
+                <option :value="null"></option>
+                <option v-for="p in proveedoresDe(borrador)" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+              </select>
+              <div class="campo-error" v-if="errPanel('proveedor_id')">{{ errPanel('proveedor_id') }}</div>
+            </div>
+            <div class="campo" :class="{ err: errPanel('medio') }">
+              <label for="p-medio">Medio</label>
+              <select id="p-medio" v-model="borrador.medio" @blur="tocar('medio')">
+                <option :value="null"></option>
+                <option v-for="t in ENUMS.medio" :key="t" :value="t">{{ t }}</option>
+              </select>
+              <div class="campo-error" v-if="errPanel('medio')">{{ errPanel('medio') }}</div>
+            </div>
+            <div class="campo" :class="{ err: errPanel('tipo_costo') }">
+              <label for="p-tipo-costo">Tipo de costo</label>
+              <select id="p-tipo-costo" v-model="borrador.tipo_costo" @blur="tocar('tipo_costo')">
+                <option :value="null"></option>
+                <option v-for="t in ENUMS.tipo_costo" :key="t" :value="t">{{ t }}</option>
+              </select>
+              <div class="campo-error" v-if="errPanel('tipo_costo')">{{ errPanel('tipo_costo') }}</div>
+            </div>
+            <div class="campo ancho-2" :class="{ err: errPanel('formato') }" @focusout="tocar('formato')">
+              <label for="p-formato">Formato</label>
+              <combo id="p-formato" v-model="borrador.formato" :opciones="formatosDe(borrador.mercado_id)"></combo>
+              <div class="campo-error" v-if="errPanel('formato')">{{ errPanel('formato') }}</div>
+              <div v-else-if="(borrador._tocados.formato || borrador._intento) && avisoFormato(borrador)" class="alerta aviso aviso-formato">
+                <strong>{{ avisoFormato(borrador).formato }}</strong> no existe en este mercado.
+                <span v-if="avisoFormato(borrador).parecido">¿Quisiste decir <strong>{{ avisoFormato(borrador).parecido }}</strong>?</span>
+                <div class="acciones-aviso">
+                  <button v-if="avisoFormato(borrador).parecido" type="button" class="btn"
+                          @click="usarFormato(borrador, avisoFormato(borrador).parecido)">Usar {{ avisoFormato(borrador).parecido }}</button>
+                  <button type="button" class="btn" @click="confirmarFormatoNuevo(borrador)">Sí, es un formato nuevo</button>
+                </div>
+              </div>
+            </div>
+            <div class="campo ancho-2" :class="{ err: errPanel('ubicacion') }">
+              <label for="p-ubicacion">Ubicación</label>
+              <input id="p-ubicacion" v-model.trim="borrador.ubicacion" @blur="tocar('ubicacion')">
+              <div class="campo-error" v-if="errPanel('ubicacion')">{{ errPanel('ubicacion') }}</div>
+            </div>
+            <div class="campo" :class="{ err: errPanel('ciudad') }">
+              <label for="p-ciudad">Ciudad</label>
+              <input id="p-ciudad" v-model.trim="borrador.ciudad" list="dl-ciudades" @blur="tocar('ciudad')">
+              <div class="campo-error" v-if="errPanel('ciudad')">{{ errPanel('ciudad') }}</div>
+            </div>
+            <div class="campo" :class="{ err: errPanel('tarifa_bruta') }">
+              <label for="p-bruta">Tarifa bruta</label>
+              <celda-num id="p-bruta" v-model="borrador.tarifa_bruta" :decimales="2"
+                         @editado="recalcular(borrador, 'neta')" @blur="tocar('tarifa_bruta')"></celda-num>
+              <div class="campo-error" v-if="errPanel('tarifa_bruta')">{{ errPanel('tarifa_bruta') }}</div>
+            </div>
+            <div class="campo" :class="{ err: errPanel('descuento') }">
+              <label for="p-desc">Descuento %</label>
+              <celda-num id="p-desc" v-model="borrador.descuento" :decimales="2"
+                         @editado="recalcular(borrador, 'neta')" @blur="tocar('descuento')"></celda-num>
+              <div class="campo-error" v-if="errPanel('descuento')">{{ errPanel('descuento') }}</div>
+            </div>
+            <div class="campo calc">
+              <label>Tarifa neta</label>
+              <input :value="fmtNumero(borrador.tarifa_neta)" disabled class="mono num" title="Tarifa bruta × (1 − descuento)">
+            </div>
+            <div class="campo" :class="{ err: errPanel('cantidad') }">
+              <label for="p-cantidad">Cantidad</label>
+              <celda-num id="p-cantidad" v-model="borrador.cantidad" :decimales="0"
+                         @editado="recalcular(borrador, 'total')" @blur="tocar('cantidad')"></celda-num>
+              <div class="campo-error" v-if="errPanel('cantidad')">{{ errPanel('cantidad') }}</div>
+            </div>
+            <div class="campo" :class="{ err: errPanel('nro_semanas') }">
+              <label for="p-semanas">Nro. semanas</label>
+              <celda-num id="p-semanas" v-model="borrador.nro_semanas" :decimales="2" @blur="tocar('nro_semanas')"></celda-num>
+              <div class="campo-error" v-if="errPanel('nro_semanas')">{{ errPanel('nro_semanas') }}</div>
+            </div>
+            <div class="campo" :class="{ calc: !borrador.valor_total_manual, err: errPanel('valor_total') }">
+              <label for="p-total">
+                Valor total
+                <button v-if="!borrador.valor_total_manual" type="button" class="enlace"
+                        @click="aManual(borrador, '#p-total')">escribir a mano</button>
+                <button v-else type="button" class="enlace" title="Volver a tarifa neta × cantidad"
+                        @click="aAuto(borrador)">↺ automático</button>
+              </label>
+              <input v-if="!borrador.valor_total_manual" :value="fmtNumero(borrador.valor_total)" disabled
+                     class="mono num" title="Tarifa neta × cantidad">
+              <celda-num v-else id="p-total" v-model="borrador.valor_total" :decimales="2"
+                         :title="pistaFormula(borrador)" @blur="tocar('valor_total')"></celda-num>
+              <div class="campo-error" v-if="errPanel('valor_total')">{{ errPanel('valor_total') }}</div>
+              <div class="campo-pista" v-else-if="borrador.valor_total_manual">Fórmula: {{ fmtNumero(formula(borrador)) || '—' }}</div>
+            </div>
+            <div class="campo" :class="{ err: errPanel('fecha_inicio') }">
+              <label for="p-inicio">Fecha inicio</label>
+              <input id="p-inicio" type="date" v-model="borrador.fecha_inicio" class="mono" @blur="tocar('fecha_inicio')">
+              <div class="campo-error" v-if="errPanel('fecha_inicio')">{{ errPanel('fecha_inicio') }}</div>
+            </div>
+            <div class="campo" :class="{ err: errPanel('fecha_fin') }">
+              <label for="p-fin">Fecha fin</label>
+              <input id="p-fin" type="date" v-model="borrador.fecha_fin" class="mono" @blur="tocar('fecha_fin')">
+              <div class="campo-error" v-if="errPanel('fecha_fin')">{{ errPanel('fecha_fin') }}</div>
+            </div>
+          </form>
+
+          <footer class="panel-pie">
+            <div v-if="borrador._error" class="alerta error">{{ borrador._error }}</div>
+            <div v-else-if="borrador._intento && (Object.keys(erroresBorrador).length || avisoFormato(borrador))" class="alerta error">
+              Revisa los campos marcados<span v-if="!Object.keys(erroresBorrador).length"> y confirma el formato</span>.
+            </div>
+            <div class="botones">
+              <button type="button" class="btn" @click="cerrarPanel" :disabled="borrador._guardando">Cancelar</button>
+              <button type="submit" form="form-compra" class="btn p" :disabled="borrador._guardando">
+                {{ borrador._guardando ? 'Guardando…' : 'Guardar compra' }}
+              </button>
+            </div>
+          </footer>
+        </aside>
+      </div>
+    </transition>
+
     <datalist id="dl-clientes"><option v-for="v in sugerencias.cliente" :key="v" :value="v"></option></datalist>
-    <datalist id="dl-formatos"><option v-for="v in sugerencias.formato" :key="v" :value="v"></option></datalist>
     <datalist id="dl-ciudades"><option v-for="v in sugerencias.ciudad" :key="v" :value="v"></option></datalist>
   </main>
 
