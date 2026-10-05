@@ -22,7 +22,7 @@
       <div class="card-cab">
         <h2>Flow</h2>
         <span class="estado-global mono" :class="estadoGlobal.clase">{{ estadoGlobal.texto }}</span>
-        <button class="btn p" type="button" style="margin-left:auto"
+        <button v-if="!soloLectura" class="btn p" type="button" style="margin-left:auto"
                 :disabled="!puedeCrear" :title="motivoNoCrear" @click="abrirPanel">Nueva compra</button>
       </div>
 
@@ -102,58 +102,70 @@
                 <span v-if="!filtros.mercado" class="mk">{{ codigoMercado(r.mercado_id) }}</span>{{ r.codigo }}
               </td>
               <td class="pegada c1" :class="claseErr(r, 'cliente')" :title="msgErr(r, 'cliente')">
-                <input v-model.trim="r.cliente" :disabled="soloLectura" list="dl-clientes" class="ancho-s">
+                <span v-if="soloLectura" class="txt">{{ r.cliente }}</span>
+                <input v-else v-model.trim="r.cliente" list="dl-clientes" class="ancho-s">
               </td>
               <td class="calc" :class="claseErr(r, 'campana_id')" :title="msgErr(r, 'campana_id') || 'La fija el mercado'">{{ nombreCampana(r) }}</td>
               <td :class="claseErr(r, 'tipo_compra')" :title="msgErr(r, 'tipo_compra')">
-                <select v-model="r.tipo_compra" :disabled="soloLectura">
+                <span v-if="soloLectura" class="txt">{{ r.tipo_compra }}</span>
+                <select v-else v-model="r.tipo_compra">
                   <option :value="null"></option>
                   <option v-for="t in ENUMS.tipo_compra" :key="t" :value="t">{{ t }}</option>
                 </select>
               </td>
               <td :class="claseErr(r, 'proveedor_id')" :title="msgErr(r, 'proveedor_id')">
-                <select v-model="r.proveedor_id" :disabled="soloLectura" class="ancho-m">
+                <span v-if="soloLectura" class="txt">{{ nombreProveedor(r.proveedor_id) }}</span>
+                <select v-else v-model="r.proveedor_id" class="ancho-m">
                   <option :value="null"></option>
                   <option v-for="p in proveedoresDe(r)" :key="p.id" :value="p.id">{{ p.nombre }}</option>
                 </select>
               </td>
               <td :class="claseErr(r, 'medio')" :title="msgErr(r, 'medio')">
-                <select v-model="r.medio" :disabled="soloLectura">
+                <span v-if="soloLectura" class="txt">{{ r.medio }}</span>
+                <select v-else v-model="r.medio">
                   <option :value="null"></option>
                   <option v-for="t in ENUMS.medio" :key="t" :value="t">{{ t }}</option>
                 </select>
               </td>
               <td :class="claseErr(r, 'tipo_costo')" :title="msgErr(r, 'tipo_costo')">
-                <select v-model="r.tipo_costo" :disabled="soloLectura">
+                <span v-if="soloLectura" class="txt">{{ r.tipo_costo }}</span>
+                <select v-else v-model="r.tipo_costo">
                   <option :value="null"></option>
                   <option v-for="t in ENUMS.tipo_costo" :key="t" :value="t">{{ t }}</option>
                 </select>
               </td>
               <td :class="[claseErr(r, 'formato'), { nuevo: avisoFormato(r) }]"
                   :title="msgErr(r, 'formato') || (avisoFormato(r) ? 'Formato que no existe en este mercado: confírmalo a la derecha' : '')">
-                <combo v-model="r.formato" :opciones="formatosDe(r.mercado_id)" :disabled="soloLectura" class="ancho-m"></combo>
+                <span v-if="soloLectura" class="txt">{{ r.formato }}</span>
+                <combo v-else v-model="r.formato" :opciones="formatosDe(r.mercado_id)" class="ancho-m"></combo>
               </td>
               <td :class="claseErr(r, 'ubicacion')" :title="msgErr(r, 'ubicacion')">
-                <input v-model.trim="r.ubicacion" :disabled="soloLectura" class="ancho-l">
+                <span v-if="soloLectura" class="txt">{{ r.ubicacion }}</span>
+                <input v-else v-model.trim="r.ubicacion" class="ancho-l">
               </td>
               <td :class="claseErr(r, 'ciudad')" :title="msgErr(r, 'ciudad')">
-                <input v-model.trim="r.ciudad" :disabled="soloLectura" list="dl-ciudades" class="ancho-s">
+                <span v-if="soloLectura" class="txt">{{ r.ciudad }}</span>
+                <input v-else v-model.trim="r.ciudad" list="dl-ciudades" class="ancho-s">
               </td>
               <td :class="claseErr(r, 'tarifa_bruta')" :title="msgErr(r, 'tarifa_bruta')">
-                <celda-num v-model="r.tarifa_bruta" :disabled="soloLectura" :decimales="2"
+                <span v-if="soloLectura" class="txt n">{{ fmtNumero(r.tarifa_bruta) }}</span>
+                <celda-num v-else v-model="r.tarifa_bruta" :decimales="2"
                            @editado="recalcular(r, 'neta')"></celda-num>
               </td>
               <td :class="claseErr(r, 'descuento')" :title="msgErr(r, 'descuento')">
-                <celda-num v-model="r.descuento" :disabled="soloLectura" :decimales="2" class="ancho-xs"
+                <span v-if="soloLectura" class="txt n">{{ fmtNumero(r.descuento) }}</span>
+                <celda-num v-else v-model="r.descuento" :decimales="2" class="ancho-xs"
                            @editado="recalcular(r, 'neta')"></celda-num>
               </td>
               <td class="calc mono num" :class="{ obs: obsNeta(r) }" :title="obsNeta(r)">{{ fmtNumero(r.tarifa_neta) }}</td>
               <td :class="claseErr(r, 'cantidad')" :title="msgErr(r, 'cantidad')">
-                <celda-num v-model="r.cantidad" :disabled="soloLectura" :decimales="0" class="ancho-xs"
+                <span v-if="soloLectura" class="txt n">{{ fmtNumero(r.cantidad) }}</span>
+                <celda-num v-else v-model="r.cantidad" :decimales="0" class="ancho-xs"
                            @editado="recalcular(r, 'total')"></celda-num>
               </td>
               <td :class="claseErr(r, 'nro_semanas')" :title="msgErr(r, 'nro_semanas')">
-                <celda-num v-model="r.nro_semanas" :disabled="soloLectura" :decimales="2" class="ancho-xs"></celda-num>
+                <span v-if="soloLectura" class="txt n">{{ fmtNumero(r.nro_semanas) }}</span>
+                <celda-num v-else v-model="r.nro_semanas" :decimales="2" class="ancho-xs"></celda-num>
               </td>
               <!-- Valor total: automático en --calc; doble clic lo vuelve manual; ↺ lo devuelve -->
               <td v-if="!r.valor_total_manual" class="calc mono num total-auto"
@@ -164,14 +176,17 @@
                 <div class="con-control">
                   <button v-if="!soloLectura" type="button" class="reset" title="Volver a automático (tarifa neta × cantidad)"
                           @click="aAuto(r)">↺</button>
-                  <celda-num v-model="r.valor_total" :disabled="soloLectura" :decimales="2"></celda-num>
+                  <span v-if="soloLectura" class="txt n">{{ fmtNumero(r.valor_total) }}</span>
+                  <celda-num v-else v-model="r.valor_total" :decimales="2"></celda-num>
                 </div>
               </td>
               <td :class="claseErr(r, 'fecha_inicio')" :title="msgErr(r, 'fecha_inicio')">
-                <input type="date" v-model="r.fecha_inicio" :disabled="soloLectura" class="fecha">
+                <span v-if="soloLectura" class="txt n">{{ fmtFecha(r.fecha_inicio) }}</span>
+                <input v-else type="date" v-model="r.fecha_inicio" class="fecha">
               </td>
               <td :class="claseErr(r, 'fecha_fin')" :title="msgErr(r, 'fecha_fin')">
-                <input type="date" v-model="r.fecha_fin" :disabled="soloLectura" class="fecha">
+                <span v-if="soloLectura" class="txt n">{{ fmtFecha(r.fecha_fin) }}</span>
+                <input v-else type="date" v-model="r.fecha_fin" class="fecha">
               </td>
               <td class="estado-col">
                 <div v-if="avisoFormato(r) && !soloLectura" class="aviso-celda">

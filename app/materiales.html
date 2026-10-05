@@ -27,8 +27,9 @@
           <button class="btn" type="button" :disabled="cargando" @click="verCalendario">
             {{ vista === 'calendario' ? 'Ver tabla' : 'Ver calendario' }}
           </button>
-          <button class="btn p" type="button" :disabled="soloLectura || cargando"
-                  :title="soloLectura ? 'Tu rol es de solo lectura' : ''" @click="abrirPanel">Nuevo material</button>
+          <button class="btn" type="button" :disabled="cargando || !visibles.length"
+                  title="Baja las filas filtradas con las columnas de la tabla" @click="exportarCsv">Exportar CSV</button>
+          <button v-if="!soloLectura" class="btn p" type="button" :disabled="cargando" @click="abrirPanel">Nuevo material</button>
         </div>
       </div>
 
@@ -121,15 +122,20 @@
               <td class="calc">{{ compraDe(r).formato }}</td>
               <td class="calc">{{ compraDe(r).ciudad }}</td>
               <td :class="claseErr(r, 'sub_campana_id')" :title="msgErr(r, 'sub_campana_id')">
-                <select v-model="r.sub_campana_id" :disabled="soloLectura" class="ancho-m">
+                <span v-if="soloLectura" class="txt">{{ nombreSub(r.sub_campana_id) }}</span>
+                <select v-else v-model="r.sub_campana_id" class="ancho-m">
                   <option :value="null"></option>
                   <option v-for="s in subCampanasDe(compraDe(r).mercado_id, r.sub_campana_id)" :key="s.id" :value="s.id">{{ s.nombre_unico }}</option>
                 </select>
               </td>
-              <td><input v-model="r.referencia" :disabled="soloLectura" class="ancho-m"></td>
+              <td>
+                <span v-if="soloLectura" class="txt">{{ r.referencia }}</span>
+                <input v-else v-model="r.referencia" class="ancho-m">
+              </td>
               <td>
                 <div class="con-control">
-                  <input v-model="r.enlace" :disabled="soloLectura" class="ancho-l" :title="r.enlace">
+                  <span v-if="soloLectura" class="txt corto" :title="r.enlace">{{ r.enlace }}</span>
+                  <input v-else v-model="r.enlace" class="ancho-l" :title="r.enlace">
                   <a v-if="/^https?:\/\//i.test(r.enlace)" :href="r.enlace" target="_blank" rel="noopener" class="abrir" title="Abrir enlace">↗</a>
                 </div>
               </td>
@@ -144,17 +150,22 @@
                   </a>
                 </template>
               </td>
-              <td><input v-model="r.reporte_implementacion" :disabled="soloLectura" class="ancho-m" :title="r.reporte_implementacion"></td>
+              <td>
+                <span v-if="soloLectura" class="txt corto" :title="r.reporte_implementacion">{{ r.reporte_implementacion }}</span>
+                <input v-else v-model="r.reporte_implementacion" class="ancho-m" :title="r.reporte_implementacion">
+              </td>
               <td :class="claseErr(r, 'fecha_inicio')" :title="msgErr(r, 'fecha_inicio')">
                 <div class="con-control">
-                  <input type="date" v-model="r.fecha_inicio" :disabled="soloLectura" class="fecha">
+                  <span v-if="soloLectura" class="txt n">{{ fechaCorta(r.fecha_inicio) }}</span>
+                  <input v-else type="date" v-model="r.fecha_inicio" class="fecha">
                   <button v-if="msgErr(r, 'fecha_inicio') && fuera(r) && !soloLectura" type="button" class="enlace partir"
                           @click="abrirPartir(r)">Partir →</button>
                 </div>
               </td>
               <td :class="claseErr(r, 'fecha_fin')" :title="msgErr(r, 'fecha_fin')">
                 <div class="con-control">
-                  <input type="date" v-model="r.fecha_fin" :disabled="soloLectura" class="fecha">
+                  <span v-if="soloLectura" class="txt n">{{ fechaCorta(r.fecha_fin) }}</span>
+                  <input v-else type="date" v-model="r.fecha_fin" class="fecha">
                   <button v-if="msgErr(r, 'fecha_fin') && fuera(r) && !soloLectura" type="button" class="enlace partir"
                           @click="abrirPartir(r)">Partir →</button>
                 </div>

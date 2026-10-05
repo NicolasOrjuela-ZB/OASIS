@@ -350,6 +350,7 @@ async function iniciar() {
       periodoCompra(c) { return c && c.fecha_inicio ? `${this.fechaCorta(c.fecha_inicio)} – ${this.fechaCorta(c.fecha_fin)}` : 'sin periodo'; },
       codigoMercado(id) { const m = this.mercadosPorId.get(id); return m ? m.codigo : '?'; },
       nombreProveedor(id) { const p = this.proveedoresPorId.get(id); return p ? p.nombre : ''; },
+      nombreSub(id) { const s = this.subPorId.get(id); return s ? s.nombre_unico : ''; },
       compraDe(r) { return this.comprasPorId.get(r.compra_id) || {}; },
       codigoMaterial(r) {
         const c = this.comprasPorId.get(r.compra_id);
@@ -403,6 +404,7 @@ async function iniciar() {
       },
 
       alSalirDeCelda(ev) {
+        if (this.soloLectura) return;
         const tr = ev.target.closest('tr[data-k]');
         if (!tr) return;
         // De fecha inicio a fecha fin de la misma fila aún no se guarda: se valida el par.
@@ -481,6 +483,48 @@ async function iniciar() {
           const r = this.filas.find(x => x.id === t.material_id);
           if (r) r.taxonomia = t.taxonomia;
         }
+      },
+
+      // ---------------------------------------------------------------- Exportar
+
+      // Filas filtradas con las columnas de la tabla, tal como están guardadas en
+      // la base (una edición sin guardar no sale). La imagen sale de su enlace.
+      exportarCsv() {
+        const columnas = [
+          ['Mercado', (r, c) => this.codigoMercado(c.mercado_id)],
+          ['Código', (r) => this.codigoMaterial(r)],
+          ['Compra', (r, c) => c.codigo],
+          ['Ubicación', (r, c) => c.ubicacion],
+          ['Proveedor', (r, c) => this.nombreProveedor(c.proveedor_id)],
+          ['Formato', (r, c) => c.formato],
+          ['Ciudad', (r, c) => c.ciudad],
+          ['Tipo de costo', (r, c) => c.tipo_costo],
+          ['Sub campaña', (r) => this.nombreSub(r._orig.sub_campana_id)],
+          ['Referencia', (r) => r._orig.referencia],
+          ['Enlace', (r) => r._orig.enlace],
+          ['Reporte de implementación', (r) => r._orig.reporte_implementacion],
+          ['Fecha inicio', (r) => r._orig.fecha_inicio],
+          ['Fecha fin', (r) => r._orig.fecha_fin],
+          ['Taxonomía', (r) => r.taxonomia],
+        ];
+        // Punto y coma: Excel en español lo abre en columnas; Sheets lo detecta solo.
+        const celda = (v) => {
+          const t = v === null || v === undefined ? '' : String(v);
+          return /[";\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+        };
+        const lineas = [columnas.map(([t]) => t).join(';')];
+        for (const r of this.visibles) {
+          const c = this.compraDe(r);
+          lineas.push(columnas.map(([, f]) => celda(f(r, c))).join(';'));
+        }
+        // BOM: sin él, Excel muestra mal las tildes.
+        const blob = new Blob(['\uFEFF' + lineas.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+        const m = this.mercadosPorId.get(this.filtros.mercado);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `materiales_${m ? m.codigo : 'todos'}_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
       },
 
       // ---------------------------------------------------------------- Panel lateral

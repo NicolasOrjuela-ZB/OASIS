@@ -143,6 +143,11 @@
 .tabla .fecha    { width: 128px; }
 
 
+/* Solo lectura: el valor como texto, sin input */
+.tabla .txt { display: block; padding: 0 10px; line-height: 31px; white-space: nowrap; }
+.tabla .txt.n { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.tabla .txt.corto { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+
 /* Estado de guardado por fila */
 .tabla .estado-col { min-width: 108px; padding: 0 8px; text-align: left; }
 .tabla th.estado-col { padding: 8px; }

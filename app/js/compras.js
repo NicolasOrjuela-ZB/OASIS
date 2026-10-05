@@ -436,6 +436,8 @@ async function iniciar() {
     methods: {
       fmtNumero(x) { return esNumero(x) ? fmt.format(x) : ''; },
       fmtEntero(x) { return fmt.format(x); },
+      fmtFecha(iso) { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; },
+      nombreProveedor(id) { const p = this.proveedoresPorId.get(id); return p ? p.nombre : ''; },
       nombreMes(k) { const [y, m] = k.split('-'); return `${MESES[Number(m) - 1]} ${y}`; },
       codigoMercado(id) { const m = this.mercadosPorId.get(id); return m ? m.codigo : '?'; },
       campanaOoh(mercadoId) { const m = this.mercadosPorId.get(mercadoId); return m ? m.campana_ooh_id : null; },
@@ -510,6 +512,7 @@ async function iniciar() {
       },
 
       alSalirDeCelda(ev) {
+        if (this.soloLectura) return;
         const tr = ev.target.closest('tr[data-k]');
         if (!tr) return;
         const r = this.filas.find(x => x._k === Number(tr.dataset.k));

@@ -43,7 +43,6 @@ async function salir() {
 const NAVEGACION = [
   { clave: 'compras',    texto: 'Compras',    href: 'compras.html' },
   { clave: 'materiales', texto: 'Materiales', href: 'materiales.html' },
-  { clave: 'consulta',   texto: 'Consulta',   href: null },
   { clave: 'inversion',  texto: 'Inversión',  href: null },
   { clave: 'alertas',    texto: 'Alertas',    href: null },
 ];
