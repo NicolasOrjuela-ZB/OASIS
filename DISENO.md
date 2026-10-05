@@ -2,7 +2,7 @@
 
 Las pantallas de OASIS siguen el sistema visual del Planificador de Campañas ZetaBé y del dashboard Parque Fijo LATAM. Son la misma familia de herramientas y deben verse como tal.
 
-Referencia viva: el prototipo del Planificador (artefacto "Planificador de Campañas OASIS", pestaña Prototipo). Cuando haya duda, ese prototipo manda.
+Referencia de origen: el prototipo del Planificador de Campañas ZetaBé (artefacto interno, fuera de este repositorio). Esta especificación lo resume; si algo no está aquí, se decide siguiendo las reglas de uso de abajo, no consultando el prototipo.
 
 ## Carácter
 
@@ -125,7 +125,7 @@ Dos columnas: izquierda `--k` con la marca y una frase en `#A39D8B`; derecha el 
 3. **Las celdas calculadas se ven distintas.** Fondo `--calc`. El usuario tiene que saber de un vistazo qué puede editar y qué no.
 4. **Los números siempre en monoespaciada y alineados a la derecha.** Sin excepciones, incluidos códigos y fechas.
 5. **Los errores se marcan en la celda**, no solo en un mensaje general. Fondo rojo claro y línea inferior roja.
-6. **Nada de modales para capturar.** Las compras y los materiales se editan en tabla, como en el prototipo. Los modales solo para confirmaciones.
+6. **Nada de modales para capturar.** Las compras y los materiales se editan en tabla. Los modales solo para confirmaciones.
 
 ## Pantallas de la Fase 2 (interfaz interna)
 
@@ -137,4 +137,4 @@ Dos columnas: izquierda `--k` con la marca y una frase en `#A39D8B`; derecha el 
 | Inversión | Inversion_total / semanal / diaria | Tres pestañas sobre la misma card; totales en fila negra |
 | Alertas | v_alertas | Lista agrupada por tipo con enlace a la fila que falla |
 
-Cada pantalla lleva la barra superior, el título condensado y una card. Las tablas editables siguen el patrón del prototipo: inputs sin borde dentro de la celda, calculadas en `--calc`, errores en la celda.
+Cada pantalla lleva la barra superior, el título condensado y una card. Las tablas editables siguen el patrón de tabla editable: inputs sin borde dentro de la celda, calculadas en `--calc`, errores en la celda.
