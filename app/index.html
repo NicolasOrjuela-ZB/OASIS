@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OASIS · Entrar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sofia+Sans+Extra+Condensed:wght@700;800&family=Mulish:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="css/oasis.css">
+</head>
+<body>
+  <div class="login">
+    <section class="lado-marca">
+      <div>
+        <div class="marca">OASIS<span>.</span></div>
+        <p class="frase">Seguimiento de pauta OOH de Mercado Libre. Cuánto le corresponde a cada material, día por día.</p>
+      </div>
+      <div class="pie">ZETAB · V2.0</div>
+    </section>
+
+    <section class="lado-form">
+      <div class="caja">
+        <div class="eyebrow">Acceso interno</div>
+        <h1 class="titulo">Entrar</h1>
+
+        <!-- Paso 1: pedir el enlace -->
+        <form id="form-correo" hidden>
+          <p style="margin:0;color:var(--ink-soft)">Te enviamos un enlace de acceso a tu correo. No hay contraseña.</p>
+          <div class="campo">
+            <label for="correo">Correo</label>
+            <input id="correo" type="email" autocomplete="email" required placeholder="nombre@empresa.com">
+          </div>
+          <button class="btn p" type="submit" id="btn-enviar">Enviar enlace</button>
+        </form>
+
+        <!-- Mensajes -->
+        <div id="mensaje" class="alerta" hidden></div>
+
+        <!-- Sesión sin acceso -->
+        <div id="sin-acceso" hidden>
+          <button class="btn" type="button" id="btn-otro">Entrar con otro correo</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="js/comun.js"></script>
+  <script>
+    const form = document.getElementById('form-correo');
+    const inputCorreo = document.getElementById('correo');
+    const btnEnviar = document.getElementById('btn-enviar');
+    const mensaje = document.getElementById('mensaje');
+    const sinAcceso = document.getElementById('sin-acceso');
+
+    function mostrar(tipo, texto) {
+      mensaje.className = 'alerta' + (tipo ? ' ' + tipo : '');
+      mensaje.textContent = texto;
+      mensaje.hidden = false;
+    }
+
+    // Si el enlace vino con error (vencido, ya usado), Supabase lo deja en el hash.
+    function errorDelEnlace() {
+      const h = new URLSearchParams(window.location.hash.slice(1));
+      const q = new URLSearchParams(window.location.search);
+      const desc = h.get('error_description') || q.get('error_description');
+      if (!desc) return null;
+      history.replaceState(null, '', window.location.pathname);
+      return desc.replace(/\+/g, ' ');
+    }
+
+    async function iniciar() {
+      const errEnlace = errorDelEnlace();
+      let estado;
+      try {
+        estado = await usuarioActual();
+      } catch (e) {
+        form.hidden = false;
+        mostrar('error', 'No se pudo verificar tu acceso: ' + e.message);
+        return;
+      }
+
+      if (estado.session && estado.usuario) {
+        window.location.replace('compras.html');
+        return;
+      }
+
+      if (estado.session && !estado.usuario) {
+        mostrar('error',
+          `El correo ${estado.session.user.email} no tiene acceso a OASIS, o su usuario está inactivo. ` +
+          'Pide a un administrador que te dé de alta y vuelve a entrar.');
+        sinAcceso.hidden = false;
+        return;
+      }
+
+      form.hidden = false;
+      if (errEnlace) mostrar('error', 'El enlace no sirvió (' + errEnlace + '). Pide uno nuevo.');
+    }
+
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const correo = inputCorreo.value.trim().toLowerCase();
+      if (!correo) return;
+      btnEnviar.disabled = true;
+      btnEnviar.textContent = 'Enviando…';
+      const { error } = await sb.auth.signInWithOtp({
+        email: correo,
+        options: { emailRedirectTo: new URL('index.html', window.location.href).href },
+      });
+      btnEnviar.disabled = false;
+      btnEnviar.textContent = 'Enviar enlace';
+      if (error) {
+        mostrar('error', 'No se pudo enviar el enlace: ' + error.message);
+      } else {
+        mostrar('', `Listo. Revisa ${correo} y abre el enlace desde este mismo navegador.`);
+      }
+    });
+
+    document.getElementById('btn-otro').addEventListener('click', async () => {
+      await sb.auth.signOut();
+      sinAcceso.hidden = true;
+      mensaje.hidden = true;
+      form.hidden = false;
+    });
+
+    iniciar();
+  </script>
+</body>
+</html>
