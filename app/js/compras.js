@@ -325,6 +325,12 @@ async function iniciar() {
         });
       },
 
+      // Valores ya usados, para autocompletar los campos de texto libre.
+      sugerencias() {
+        const unicos = (c) => [...new Set(this.filas.map(r => r[c]).filter(Boolean))].sort();
+        return { cliente: unicos('cliente'), formato: unicos('formato'), ciudad: unicos('ciudad') };
+      },
+
       sumaVisible() {
         return this.visibles.reduce((s, r) => s + (esNumero(r.valor_total) ? r.valor_total : 0), 0);
       },
@@ -514,7 +520,7 @@ async function iniciar() {
         this.filas.push(r);
         this.filaActiva = r._k;
         await nextTick();
-        const tr = this.$el.querySelector(`tr[data-k="${r._k}"]`);
+        const tr = document.querySelector(`#app tr[data-k="${r._k}"]`);
         if (tr) {
           tr.scrollIntoView({ block: 'nearest' });
           const primero = tr.querySelector('input, select');
@@ -531,7 +537,8 @@ async function iniciar() {
           const [mercados, mis, propios, campanas, proveedores, compras] = await Promise.all([
             traerTodo(() => sb.from('mercados').select('id, codigo, nombre, activo').order('id')),
             sb.rpc('fn_mis_mercados'),
-            traerTodo(() => sb.from('usuario_mercados').select('mercado_id').order('mercado_id')),
+            traerTodo(() => sb.from('usuario_mercados').select('mercado_id')
+              .eq('usuario_id', this.usuario.id).order('mercado_id')),  // un ADMIN ve las de todos
             traerTodo(() => sb.from('campanas').select('id, mercado_id, nombre_unico, activo').order('nombre_unico')),
             traerTodo(() => sb.from('proveedores').select('id, mercado_id, nombre, activo').order('nombre')),
             traerTodo(() => sb.from('compras').select(COLUMNAS_COMPRA).order('mercado_id').order('codigo')),
