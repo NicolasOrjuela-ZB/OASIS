@@ -65,6 +65,7 @@ Fondo `--k`, altura mínima 50 px, texto blanco. Contiene: marca, navegación pr
 - Ítem de navegación: 12.5 px, bold, color `#D8D3C4`; activo en `--y` con subrayado de 2 px del mismo color.
 - Migas: 12 px, `#A39D8B`, con el nivel actual en `--y` bold.
 - Usuario: dos líneas, nombre y rol, 12 y 11 px.
+- Junto a «Alertas», el total de alertas del mercado activo: JetBrains Mono 10 px, `#A39D8B` (`--y` si la pestaña está activa), un poco elevado. Sin alertas, no se muestra.
 
 ### Título de pantalla
 Sofia Sans Extra Condensed 800, 34 px, mayúsculas, línea de 0.95. Encima puede ir un eyebrow en JetBrains Mono 11 px, espaciado 0.16 em, `--muted`.
@@ -87,6 +88,8 @@ Franja horizontal con borde `--rule`. Cada KPI: etiqueta 9.5 px mayúscula espac
 - Fila de subtotal: fondo `#F7F5EF`, bold.
 - Fila de total: fondo `--k`, texto claro, bold; los montos destacados en `--y`.
 - Primeras columnas pegajosas (sticky) en tablas anchas.
+- Fila resaltada (la que se abrió desde Alertas): fondo `--y-wash` y línea izquierda de 4 px en `--k` en la primera celda. Las celdas con error conservan su marca.
+- Tablas largas de solo lectura: se paginan de 200 en 200 con un paginador al pie («Filas 1–200 de N», Anterior / Siguiente). KPIs y fila de total siempre suman todo lo filtrado, no la página.
 
 ### Inputs dentro de tabla
 Sin borde, sin fondo, altura 31 px, padding 0 × 9. Al enfocar, fondo `--y-wash`. Numéricos alineados a la derecha en monoespaciada. El input vive dentro de la celda; la celda es el contenedor visual.
@@ -121,6 +124,19 @@ Para crear registros nuevos. Entra desde la derecha sobre la pantalla, con un fo
 ### Filtro de selección múltiple
 Mismo aspecto que un input fuera de tabla. Muestra "Todos" si no hay nada marcado, el nombre si hay uno y "N seleccionados" si hay varios; con selección activa, borde `--k` y texto bold. La lista lleva casillas y un "Limpiar" al pie.
 
+### Gráficos
+HTML y CSS, sin librería. Forma de énfasis: lo ejecutado en ámbar `#C98500`, lo que falta por ejecutar en `#DDD8CB`; la barra completa es el proyectado. Validados con el validador de paletas de dataviz (daltonismo ΔE 23.7, visión normal 24.7); el gris queda bajo 3:1 sobre blanco, por eso cada barra lleva su valor y hay vista de tabla.
+- Columnas para series en el tiempo (por mes), barras horizontales para categorías (por sub campaña, por proveedor; las 8 mayores y el resto en «Otros (n)»).
+- Barras de 24 px como máximo (columnas) y 14 px (horizontales), esquinas rectas, hueco de 2 px blanco entre segmentos, sin eje Y: el valor va sobre la columna o en la punta de la barra, abreviado en millones («$ 632 M»).
+- Leyenda única en el encabezado de la card, porque los tres gráficos usan la misma codificación.
+- Al pasar el cursor o enfocar con teclado, globo negro con los valores exactos (proyectado con % del total, ejecutado, por ejecutar), valor primero.
+- «Ver como tabla» cambia los gráficos por tablas con los mismos datos.
+- Mientras recargan (ej. tras cambiar la fecha de corte) quedan al 50 % de opacidad, sin parpadeo.
+- El ámbar de los gráficos es un tono propio de los datos: no se usa en botones ni texto.
+
+### Modal de confirmación
+Solo para confirmar algo con efecto amplio (ej. la fecha de corte). Centrado, máximo 440 px, mismo fondo `--ink` al 28 % que el panel lateral; caja `--surface` con borde 1 px `--k` y superior 4 px `--k`, sin sombra. Dos pasos: elegir y luego confirmar diciendo qué cambia y para quién. Esc cierra.
+
 ### Combo
 Input con lista de valores ya usados que acepta texto nuevo (ej. formato). Un valor nuevo se marca en `--warn-wash` y pide confirmación antes de guardar, sugiriendo el existente más parecido.
 
@@ -135,7 +151,7 @@ Dos columnas: izquierda `--k` con la marca y una frase en `#A39D8B`; derecha el 
 4. **Los números siempre en monoespaciada y alineados a la derecha.** Sin excepciones, incluidos códigos y fechas.
 5. **Los errores se marcan en la celda**, no solo en un mensaje general. Fondo rojo claro y línea inferior roja.
 6. **Lo existente se edita en tabla; lo nuevo se crea en panel lateral.** Las compras y los materiales que ya existen se editan en su fila. Los nuevos se crean en un panel que entra desde la derecha y no existen hasta que se guardan. Los modales siguen siendo solo para confirmaciones.
-7. **El rol LECTURA ve texto, no campos.** En Compras y Materiales los valores se muestran como texto plano, sin inputs; no hay botón de nuevo ni guardado al salir de la celda. Sí puede filtrar, ver el calendario y exportar.
+7. **El rol LECTURA ve texto, no campos.** LECTURA es consulta interna sin captura: jefes, otras áreas, gente nueva en planning. No es el rol de BI (BI se conecta a las vistas sin usuario en la app; Fase 4). En Compras y Materiales los valores se muestran como texto plano, sin inputs; no hay botón de nuevo ni guardado al salir de la celda. Sí puede filtrar, ver el calendario y exportar. Inversión y Alertas las ve completas, igual que los demás roles; solo la fecha de corte no es editable.
 
 ## Pantallas de la Fase 2 (interfaz interna)
 
@@ -143,7 +159,7 @@ Dos columnas: izquierda `--k` con la marca y una frase en `#A39D8B`; derecha el 
 |---|---|---|
 | Compras | Flow | Card con tabla editable; una fila por compra; alta en panel lateral; filtros de selección múltiple por mes, proveedor, tipo de costo; KPIs de total y cantidad |
 | Materiales | Tracking | Card con tabla editable; una fila por material; columnas calculadas de compra en `--calc`; botón que cambia la tabla por el calendario del mes; validación de fechas en celda con enlace «Partir →» al panel; exportar a CSV las filas filtradas. Absorbe la antigua pantalla Consulta (hoja Vista) |
-| Inversión | Inversion_total / semanal / diaria | Tres pestañas sobre la misma card; totales en fila negra |
-| Alertas | v_alertas | Lista agrupada por tipo con enlace a la fila que falla |
+| Inversión | Inversion_total / semanal / diaria | Solo lectura. Filtros encima de todo, compartidos (mercado, mes, proveedor, tipo de costo, sub campaña). Card «Resumen» con tres gráficos (por mes, por sub campaña, por proveedor) calculados desde la diaria filtrada. Card «Reparto» con tres pestañas en el encabezado de la card, cada una con todas las columnas de su vista; KPIs de proyectado, ejecutado y por ejecutar; fila de total negra; paginación de 200; exportar CSV de la pestaña. «Ejecutado a: 5 oct 2026» en el encabezado: un ADMIN lo cambia o lo vuelve a hoy con confirmación |
+| Alertas | v_alertas | Solo lectura. Filtro de mercado; una card por tipo con el conteo en el título, en este orden: fuera de periodo, sin fechas, sin sub campaña, compra sin materiales, sub campaña de otro mercado. Sin casos, sin card. Cada referencia abre Compras o Materiales con la fila resaltada; fuera de periodo abre el panel de partición |
 
 Cada pantalla lleva la barra superior, el título condensado y una card. Las tablas editables siguen el patrón de tabla editable: inputs sin borde dentro de la celda, calculadas en `--calc`, errores en la celda.

@@ -98,6 +98,10 @@
   cursor: help;
 }
 
+/* Fila que se abrió desde Alertas. El error de la celda se sigue viendo. */
+.tabla tr.resaltada td:not(.err) { background: var(--y-wash); }
+.tabla tr.resaltada td:first-child { box-shadow: inset 4px 0 0 var(--k); }
+
 /* Columnas pegajosas */
 .tabla .pegada { position: sticky; z-index: 1; }
 .tabla th.pegada { z-index: 3; }

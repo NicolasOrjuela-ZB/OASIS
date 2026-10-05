@@ -17,6 +17,7 @@
     <h1 class="titulo">Compras</h1>
 
     <div v-if="errorCarga" class="alerta error" style="margin-bottom:14px">{{ errorCarga }}</div>
+    <div v-if="avisoPedido" class="alerta aviso" style="margin-bottom:14px">{{ avisoPedido }}</div>
 
     <section class="card">
       <div class="card-cab">
@@ -97,7 +98,7 @@
             <tr v-if="visibles.length === 0">
               <td colspan="19" class="vacio">No hay compras con estos filtros.</td>
             </tr>
-            <tr v-for="r in visibles" :key="r._k" :data-k="r._k">
+            <tr v-for="r in visibles" :key="r._k" :data-k="r._k" :class="{ resaltada: r._k === resaltada }">
               <td class="pegada c0 calc mono num">
                 <span v-if="!filtros.mercado" class="mk">{{ codigoMercado(r.mercado_id) }}</span>{{ r.codigo }}
               </td>

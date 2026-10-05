@@ -16,6 +16,51 @@ const PANEL_ACTIVO = '.panel-fondo:not(.panel-leave-active)';
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
 const fmt = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 });
+const fmtPesos = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
+
+// "2026-10-05" -> "5 oct 2026"
+function fechaHumana(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${Number(d)} ${MESES[Number(m) - 1].toLowerCase()} ${y}`;
+}
+
+// Fecha de hoy en la hora local, AAAA-MM-DD.
+function hoyIso() {
+  const h = new Date();
+  return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`;
+}
+
+// Baja un CSV. `columnas` es [[título, (fila) => valor], …].
+// Punto y coma: Excel en español lo abre en columnas; Sheets lo detecta solo.
+function descargarCsv(nombre, columnas, filas) {
+  const celda = (v) => {
+    const t = v === null || v === undefined ? '' : String(v);
+    return /[";\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const lineas = [columnas.map(([t]) => t).join(';')];
+  for (const r of filas) lineas.push(columnas.map(([, f]) => celda(f(r))).join(';'));
+  // BOM: sin él, Excel muestra mal las tildes.
+  const blob = new Blob(['\uFEFF' + lineas.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = nombre;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// Fila pedida por URL desde Alertas (?compra=12 o ?material=34). Se lee una vez
+// y se limpia la URL, para que recargar no vuelva a abrir el panel.
+function filaPedida() {
+  const q = new URLSearchParams(window.location.search);
+  const pedido = {
+    compra: q.has('compra') ? Number(q.get('compra')) : null,
+    material: q.has('material') ? Number(q.get('material')) : null,
+    partir: q.get('partir') === '1',
+  };
+  if (q.toString()) history.replaceState(null, '', window.location.pathname);
+  return pedido;
+}
 
 const redondear = (x, d) => Math.round(x * 10 ** d) / 10 ** d;
 const esNumero = (x) => typeof x === 'number' && Number.isFinite(x);
