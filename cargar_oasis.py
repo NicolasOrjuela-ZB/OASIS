@@ -189,6 +189,22 @@ def texto(v):
     return s or None
 
 
+# Variantes de TIEMPO que se escriben en el Sheets y su forma única en la base.
+# El valor total multiplica por semanas solo con tiempo = 'SEMANA', así que
+# SEMANAS tiene que llegar como SEMANA.
+TIEMPO_NORMAL = {"SEMANAS": "SEMANA", "DIA": "DIAS", "1 DIA": "DIAS"}
+
+
+def normalizar_tiempo(v):
+    """Devuelve (valor para la base, valor original si se cambió)."""
+    t = texto(v)
+    if t is None:
+        return None, None
+    clave = re.sub(r"\s+", " ", t.upper())
+    nuevo = TIEMPO_NORMAL.get(clave)
+    return (nuevo, t) if nuevo else (t, None)
+
+
 def numero(v):
     if v is None or v == "":
         return None
@@ -391,10 +407,13 @@ class Carga:
             # la tarifa es semanal: tarifa neta × cantidad × nro. semanas (vacío = 0);
             # si no, tarifa neta × cantidad. Mismo criterio que la interfaz y que
             # sql/fase2_tiempo.sql.
+            tiempo, tiempo_original = normalizar_tiempo(g("tiempo"))
+            if tiempo_original:
+                self.avisos["tiempo normalizado"].append(f"{codigo}: {tiempo_original} → {tiempo}")
             tarifa_neta = numero(g("tarifa_neta")) or 0
             cantidad = int(numero(g("cantidad")) or 1)
             valor_total = numero(g("valor_total")) or 0
-            semanas = (numero(g("nro_semanas")) or 0) if texto(g("tiempo")) == "SEMANA" else 1
+            semanas = (numero(g("nro_semanas")) or 0) if tiempo == "SEMANA" else 1
             valor_total_manual = abs(valor_total - round(tarifa_neta * cantidad * semanas, 2)) > 1
 
             prov = (texto(g("proveedor")) or "").upper()
@@ -408,7 +427,7 @@ class Carga:
                 campana_id, proveedor_id,
                 texto(g("tipo_compra")), texto(g("medio")), texto(g("tipo_costo")),
                 texto(g("formato")), texto(g("ubicacion")), texto(g("ciudad")),
-                numero(g("trafico")), texto(g("tiempo")),
+                numero(g("trafico")), tiempo,
                 numero(g("tarifa_bruta")) or 0, descuento,
                 tarifa_neta, cantidad,
                 numero(g("nro_semanas")), valor_total, valor_total_manual,
