@@ -404,7 +404,8 @@ class Carga:
                 continue
 
             # valor_total_manual: el valor no sale de la fórmula. Con TIEMPO = SEMANA
-            # la tarifa es semanal: tarifa neta × cantidad × nro. semanas (vacío = 0);
+            # (y tipo de costo distinto de PRODUCCION) la tarifa es semanal:
+            # tarifa neta × cantidad × nro. semanas (vacío = 0);
             # si no, tarifa neta × cantidad. Mismo criterio que la interfaz y que
             # sql/fase2_tiempo.sql.
             tiempo, tiempo_original = normalizar_tiempo(g("tiempo"))
@@ -413,7 +414,10 @@ class Carga:
             tarifa_neta = numero(g("tarifa_neta")) or 0
             cantidad = int(numero(g("cantidad")) or 1)
             valor_total = numero(g("valor_total")) or 0
-            semanas = (numero(g("nro_semanas")) or 0) if tiempo == "SEMANA" else 1
+            # Excepción: la producción se cobra una vez, nunca por semana.
+            tipo_costo = (texto(g("tipo_costo")) or "").upper()
+            por_semana = tiempo == "SEMANA" and tipo_costo != "PRODUCCION"
+            semanas = (numero(g("nro_semanas")) or 0) if por_semana else 1
             valor_total_manual = abs(valor_total - round(tarifa_neta * cantidad * semanas, 2)) > 1
 
             prov = (texto(g("proveedor")) or "").upper()
