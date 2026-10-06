@@ -387,12 +387,15 @@ class Carga:
                     f"{codigo}: {descuento}")
                 continue
 
-            # valor_total_manual: el valor no sale de tarifa neta × cantidad.
-            # Mismo criterio que sql/fase2_compras.sql.
+            # valor_total_manual: el valor no sale de la fórmula. Con TIEMPO = SEMANA
+            # la tarifa es semanal: tarifa neta × cantidad × nro. semanas (vacío = 0);
+            # si no, tarifa neta × cantidad. Mismo criterio que la interfaz y que
+            # sql/fase2_tiempo.sql.
             tarifa_neta = numero(g("tarifa_neta")) or 0
             cantidad = int(numero(g("cantidad")) or 1)
             valor_total = numero(g("valor_total")) or 0
-            valor_total_manual = abs(valor_total - round(tarifa_neta * cantidad, 2)) > 1
+            semanas = (numero(g("nro_semanas")) or 0) if texto(g("tiempo")) == "SEMANA" else 1
+            valor_total_manual = abs(valor_total - round(tarifa_neta * cantidad * semanas, 2)) > 1
 
             prov = (texto(g("proveedor")) or "").upper()
             proveedor_id = self.mapa_proveedores.get(prov)
