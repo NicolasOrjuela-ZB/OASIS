@@ -21,7 +21,7 @@
 
     <section class="card">
       <div class="card-cab">
-        <h2>Flow</h2>
+        <h2>Compras</h2>
         <span class="estado-global mono" :class="estadoGlobal.clase">{{ estadoGlobal.texto }}</span>
         <button v-if="!soloLectura" class="btn p" type="button" style="margin-left:auto"
                 :disabled="!puedeCrear" :title="motivoNoCrear" @click="abrirPanel">Nueva compra</button>
@@ -83,12 +83,13 @@
               <th>Formato</th>
               <th>Ubicación</th>
               <th>Ciudad</th>
+              <th>Tiempo</th>
               <th class="num">Tarifa bruta</th>
               <th class="num">Desc. %</th>
               <th class="num calc">Tarifa neta</th>
               <th class="num">Cantidad</th>
               <th class="num">Nro. sem.</th>
-              <th class="num calc" title="Automático: tarifa neta × cantidad. Doble clic en la celda para escribirlo a mano.">Valor total</th>
+              <th class="num calc" title="Automático: tarifa neta × cantidad (× nro. semanas si el tiempo es SEMANA). Doble clic en la celda para escribirlo a mano.">Valor total</th>
               <th class="num">Fecha inicio</th>
               <th class="num">Fecha fin</th>
               <th class="estado-col"></th>
@@ -148,6 +149,13 @@
                 <span v-if="soloLectura" class="txt">{{ r.ciudad }}</span>
                 <input v-else v-model.trim="r.ciudad" list="dl-ciudades" class="ancho-s">
               </td>
+              <td :class="claseErr(r, 'tiempo')" :title="msgErr(r, 'tiempo')">
+                <span v-if="soloLectura" class="txt">{{ r.tiempo }}</span>
+                <select v-else v-model="r.tiempo" class="ancho-xs" @change="recalcular(r, 'total')">
+                  <option :value="null"></option>
+                  <option v-for="t in opcionesTiempo" :key="t" :value="t">{{ t }}</option>
+                </select>
+              </td>
               <td :class="claseErr(r, 'tarifa_bruta')" :title="msgErr(r, 'tarifa_bruta')">
                 <span v-if="soloLectura" class="txt n">{{ fmtNumero(r.tarifa_bruta) }}</span>
                 <celda-num v-else v-model="r.tarifa_bruta" :decimales="2"
@@ -166,16 +174,17 @@
               </td>
               <td :class="claseErr(r, 'nro_semanas')" :title="msgErr(r, 'nro_semanas')">
                 <span v-if="soloLectura" class="txt n">{{ fmtNumero(r.nro_semanas) }}</span>
-                <celda-num v-else v-model="r.nro_semanas" :decimales="2" class="ancho-xs"></celda-num>
+                <celda-num v-else v-model="r.nro_semanas" :decimales="2" class="ancho-xs"
+                           @editado="recalcular(r, 'total')"></celda-num>
               </td>
               <!-- Valor total: automático en --calc; doble clic lo vuelve manual; ↺ lo devuelve -->
               <td v-if="!r.valor_total_manual" class="calc mono num total-auto"
-                  :title="soloLectura ? 'Tarifa neta × cantidad' : 'Automático: tarifa neta × cantidad. Doble clic para escribirlo a mano.'"
+                  :title="soloLectura ? textoFormula(r) : `Automático: ${textoFormula(r)}. Doble clic para escribirlo a mano.`"
                   @dblclick="aManual(r, `#app tr[data-k='${r._k}'] .total-manual input`)">{{ fmtNumero(r.valor_total) }}</td>
               <td v-else class="total-manual" :class="claseErr(r, 'valor_total')"
                   :title="msgErr(r, 'valor_total') || pistaFormula(r)">
                 <div class="con-control">
-                  <button v-if="!soloLectura" type="button" class="reset" title="Volver a automático (tarifa neta × cantidad)"
+                  <button v-if="!soloLectura" type="button" class="reset" :title="`Volver a automático (${textoFormula(r)})`"
                           @click="aAuto(r)">↺</button>
                   <span v-if="soloLectura" class="txt n">{{ fmtNumero(r.valor_total) }}</span>
                   <celda-num v-else v-model="r.valor_total" :decimales="2"></celda-num>
@@ -204,7 +213,7 @@
             <tr>
               <td class="pegada c0">Total</td>
               <td class="pegada c1"></td>
-              <td colspan="13"></td>
+              <td colspan="14"></td>
               <td class="mono num destacado">{{ fmtNumero(sumaVisible) }}</td>
               <td colspan="3"></td>
             </tr>
@@ -296,6 +305,13 @@
               <input id="p-ciudad" v-model.trim="borrador.ciudad" list="dl-ciudades" @blur="tocar('ciudad')">
               <div class="campo-error" v-if="errPanel('ciudad')">{{ errPanel('ciudad') }}</div>
             </div>
+            <div class="campo">
+              <label for="p-tiempo">Tiempo</label>
+              <select id="p-tiempo" v-model="borrador.tiempo" @change="recalcular(borrador, 'total')">
+                <option :value="null"></option>
+                <option v-for="t in opcionesTiempo" :key="t" :value="t">{{ t }}</option>
+              </select>
+            </div>
             <div class="campo" :class="{ err: errPanel('tarifa_bruta') }">
               <label for="p-bruta">Tarifa bruta</label>
               <celda-num id="p-bruta" v-model="borrador.tarifa_bruta" :decimales="2"
@@ -320,7 +336,8 @@
             </div>
             <div class="campo" :class="{ err: errPanel('nro_semanas') }">
               <label for="p-semanas">Nro. semanas</label>
-              <celda-num id="p-semanas" v-model="borrador.nro_semanas" :decimales="2" @blur="tocar('nro_semanas')"></celda-num>
+              <celda-num id="p-semanas" v-model="borrador.nro_semanas" :decimales="2"
+                         @editado="recalcular(borrador, 'total')" @blur="tocar('nro_semanas')"></celda-num>
               <div class="campo-error" v-if="errPanel('nro_semanas')">{{ errPanel('nro_semanas') }}</div>
             </div>
             <div class="campo" :class="{ calc: !borrador.valor_total_manual, err: errPanel('valor_total') }">
@@ -328,11 +345,11 @@
                 Valor total
                 <button v-if="!borrador.valor_total_manual" type="button" class="enlace"
                         @click="aManual(borrador, '#p-total')">escribir a mano</button>
-                <button v-else type="button" class="enlace" title="Volver a tarifa neta × cantidad"
+                <button v-else type="button" class="enlace" :title="`Volver a ${textoFormula(borrador)}`"
                         @click="aAuto(borrador)">↺ automático</button>
               </label>
               <input v-if="!borrador.valor_total_manual" :value="fmtNumero(borrador.valor_total)" disabled
-                     class="mono num" title="Tarifa neta × cantidad">
+                     class="mono num" :title="textoFormula(borrador)">
               <celda-num v-else id="p-total" v-model="borrador.valor_total" :decimales="2"
                          :title="pistaFormula(borrador)" @blur="tocar('valor_total')"></celda-num>
               <div class="campo-error" v-if="errPanel('valor_total')">{{ errPanel('valor_total') }}</div>

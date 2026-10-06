@@ -49,11 +49,11 @@ Vistas: `v_materiales` (nivel material, con taxonomía), `v_inversion_diaria`, `
 
 **Campaña de la compra.** La fija el mercado: `mercados.campana_ooh_id` (MCO = PARQUE-FIJO). Los demás mercados aún no la tienen y no pueden crear compras. La carga avisa si el Sheets trae otra y usa la del mercado.
 
-**Valor total.** `compras.valor_total_manual`: false = tarifa neta × cantidad, lo recalcula la interfaz; true = escrito a mano (marcado cuando difiere más de $1 de la fórmula, al migrar y al cargar). `descuento_pct` es fracción 0–1.
+**Valor total.** `compras.valor_total_manual`: false = sale de la fórmula (ver reglas de negocio), lo recalcula la interfaz; true = escrito a mano (marcado cuando difiere más de $1 de la fórmula, al migrar y al cargar). `descuento_pct` es fracción 0–1.
 
 **Tramos.** Cuando una campaña cruza dos compras del mismo soporte se parte en un material por compra; los tramos comparten `materiales.grupo_tramo` (uuid, nulo si no está partido). La interfaz crea y parte materiales con `fn_guardar_tramos(material_id, datos, tramos)`: una transacción, con permisos del usuario (RLS aplica), que asigna la siguiente letra libre de cada compra y rechaza tramos fuera del periodo. Mismo soporte = mismo mercado, proveedor, ubicación y tipo de costo. No hay CHECK de periodo en la tabla: el Sheets todavía trae materiales fuera de su compra y la carga no debe fallar.
 
-Cambios de Fase 2 sobre el esquema: `sql/fase2_compras.sql`, `sql/fase2_materiales.sql`, `sql/fase2_alertas.sql`, `sql/fase2_inversion.sql`.
+Cambios de Fase 2 sobre el esquema: `sql/fase2_compras.sql`, `sql/fase2_materiales.sql`, `sql/fase2_alertas.sql`, `sql/fase2_inversion.sql`, `sql/fase2_tiempo.sql`.
 
 ## Reglas de negocio — no cambiar sin consultar
 
@@ -62,6 +62,8 @@ Cambios de Fase 2 sobre el esquema: `sql/fase2_compras.sql`, `sql/fase2_material
 **Nunca repartir por días-material.** Ese fue el modelo original y estaba mal: con materiales simultáneos cuenta el mismo día varias veces.
 
 **Un material nunca excede su compra.** Las compras son mensuales y las campañas no respetan el calendario. Si una campaña cruza dos compras del mismo soporte, se parte en dos materiales, uno por compra: 001-A del 15 al 30 de junio bajo la compra de junio, 002-A del 1 al 15 de julio bajo la de julio. En la herramienta es **bloqueo al guardar**, no aviso. El formulario debe ofrecer crear el segundo tramo bajo la compra siguiente, buscándola por soporte y proveedor.
+
+**Fórmula del valor total.** Depende de `compras.tiempo` (columna TIEMPO del Flow). Si `tiempo = 'SEMANA'`, la tarifa es semanal: valor total = tarifa neta × cantidad × nro. semanas (vacío cuenta como 0). En cualquier otro caso, valor total = tarifa neta × cantidad. La comparación es exacta: `SEMANAS`, `DIA` u otras variantes no multiplican. La aplican igual la interfaz (`formulaValorTotal` en `app/js/compras.js`, también en el panel de nueva compra), `cargar_oasis.py` al marcar `valor_total_manual` y `sql/fase2_tiempo.sql`. Una compra es manual cuando su valor difiere más de $1 de la fórmula; cambiar la fórmula solo cambia la bandera, nunca el valor guardado.
 
 **Costo proyectado vs ejecutado.** Proyectado es todo el periodo. Ejecutado solo los días hasta `configuracion.fecha_corte` (nula = hoy). Ambos se reportan siempre. Solo un ADMIN cambia la fecha de corte, desde el encabezado de Inversión y con confirmación; el cambio afecta también lo que lee BI.
 

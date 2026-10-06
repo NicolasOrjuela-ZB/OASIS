@@ -3,7 +3,7 @@
 
 const COLUMNAS_COMPRA = [
   'id', 'mercado_id', 'codigo', 'cliente', 'campana_id', 'proveedor_id',
-  'tipo_compra', 'medio', 'tipo_costo', 'formato', 'ubicacion', 'ciudad',
+  'tipo_compra', 'medio', 'tipo_costo', 'formato', 'ubicacion', 'ciudad', 'tiempo',
   'tarifa_bruta', 'descuento_pct', 'tarifa_neta', 'cantidad', 'nro_semanas',
   'valor_total', 'valor_total_manual', 'fecha_inicio', 'fecha_fin',
 ].join(', ');
@@ -17,6 +17,18 @@ function leerNumero(texto, decimales) {
   else if ((t.match(/\./g) || []).length > 1 || decimales === 0) normal = t.replace(/\./g, '');
   else normal = t;
   return /^-?\d*\.?\d+$|^-?\d+\.$/.test(normal) ? Number(normal) : NaN;
+}
+
+// Valores de "tiempo" que siempre se ofrecen, además de los que ya hay en la base.
+const TIEMPOS_BASE = ['MES', 'SEMANA', 'DIAS'];
+
+// Valor total automático. Con tiempo SEMANA la tarifa es por semana: se multiplica
+// por nro. semanas (vacío cuenta como 0, igual que en el Sheets y en cargar_oasis.py).
+// En cualquier otro caso, tarifa neta × cantidad.
+function formulaValorTotal(r) {
+  if (!esNumero(r.tarifa_neta) || !esNumero(r.cantidad)) return null;
+  const semanas = r.tiempo === 'SEMANA' ? (esNumero(r.nro_semanas) ? r.nro_semanas : 0) : 1;
+  return redondear(r.tarifa_neta * r.cantidad * semanas, 2);
 }
 
 // Formatos en mayúscula y con un solo espacio: "valla  led " -> "VALLA LED".
@@ -156,6 +168,7 @@ function aPayload(r, campanaOoh) {
     formato:            normFormato(r.formato),
     ubicacion:          r.ubicacion,
     ciudad:             r.ciudad,
+    tiempo:             r.tiempo || null,
     tarifa_bruta:       r.tarifa_bruta,
     descuento_pct:      redondear(r.descuento / 100, 4),
     tarifa_neta:        r.tarifa_neta,
@@ -184,6 +197,7 @@ function desdeBase(c) {
     formato: c.formato,
     ubicacion: c.ubicacion,
     ciudad: c.ciudad,
+    tiempo: c.tiempo,
     tarifa_bruta: num(c.tarifa_bruta),
     descuento: redondear(num(c.descuento_pct) * 100, 2),
     tarifa_neta: num(c.tarifa_neta),
@@ -207,7 +221,7 @@ function borradorNuevo(mercadoId, campanaOoh) {
     mercado_id: mercadoId,
     cliente: '', campana_id: campanaOoh, proveedor_id: null,
     tipo_compra: null, medio: null, tipo_costo: null,
-    formato: '', ubicacion: '', ciudad: '',
+    formato: '', ubicacion: '', ciudad: '', tiempo: 'MES',
     tarifa_bruta: null, descuento: 0, tarifa_neta: 0,
     cantidad: 1, nro_semanas: null, valor_total: 0, valor_total_manual: false,
     fecha_inicio: null, fecha_fin: null,
@@ -251,6 +265,8 @@ function validar(r, ctx) {
   if (r.nro_semanas !== null) {
     if (!esNumero(r.nro_semanas)) e.nro_semanas = 'No es un número';
     else if (r.nro_semanas < 0) e.nro_semanas = 'No puede ser negativo';
+  } else if (r.tiempo === 'SEMANA' && !r.valor_total_manual) {
+    e.nro_semanas = 'Obligatorio con tiempo SEMANA: el valor total lo multiplica';
   }
 
   if (r.valor_total_manual) {
@@ -396,6 +412,12 @@ async function iniciar() {
         const unicos = (c) => [...new Set(this.filas.map(r => r[c]).filter(Boolean))].sort();
         return { cliente: unicos('cliente'), ciudad: unicos('ciudad') };
       },
+      // Desplegable de tiempo: MES, SEMANA, DIAS y lo que ya exista en la base.
+      opcionesTiempo() {
+        const extra = [...new Set(this.filas.map(r => r.tiempo).filter(Boolean))]
+          .filter(t => !TIEMPOS_BASE.includes(t)).sort();
+        return [...TIEMPOS_BASE, ...extra];
+      },
 
       errores() {
         const m = new Map();
@@ -482,21 +504,20 @@ async function iniciar() {
       },
 
       // Recalcula lo derivado de lo que se acaba de editar. La tarifa neta solo
-      // cambia si se edita bruta o descuento; el valor total, solo si es automático.
+      // cambia si se edita bruta o descuento; el valor total, solo si es automático
+      // (lo mueven tarifa, cantidad, tiempo y nro. semanas).
       recalcular(r, desde) {
         if (desde === 'neta' && esNumero(r.tarifa_bruta) && esNumero(r.descuento)) {
           r.tarifa_neta = redondear(r.tarifa_bruta * (1 - r.descuento / 100), 2);
         }
-        if (!r.valor_total_manual && esNumero(r.tarifa_neta) && esNumero(r.cantidad)) {
-          r.valor_total = redondear(r.tarifa_neta * r.cantidad, 2);
-        }
+        const f = formulaValorTotal(r);
+        if (!r.valor_total_manual && f !== null) r.valor_total = f;
       },
-      formula(r) {
-        return esNumero(r.tarifa_neta) && esNumero(r.cantidad) ? redondear(r.tarifa_neta * r.cantidad, 2) : null;
-      },
+      formula(r) { return formulaValorTotal(r); },
+      textoFormula(r) { return r.tiempo === 'SEMANA' ? 'tarifa neta × cantidad × nro. semanas' : 'tarifa neta × cantidad'; },
       pistaFormula(r) {
         const f = this.formula(r);
-        return `Valor escrito a mano. Fórmula (tarifa neta × cantidad): ${f === null ? '—' : fmt.format(f)}`;
+        return `Valor escrito a mano. Fórmula (${this.textoFormula(r)}): ${f === null ? '—' : fmt.format(f)}`;
       },
 
       // Doble clic: el valor total pasa a manual y se edita.
