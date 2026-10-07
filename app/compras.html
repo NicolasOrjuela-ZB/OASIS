@@ -89,7 +89,7 @@
               <th class="num calc">Tarifa neta</th>
               <th class="num">Cantidad</th>
               <th class="num">Nro. sem.</th>
-              <th class="num calc" title="Automático: tarifa neta × cantidad (× nro. semanas si el tiempo es SEMANA). Doble clic en la celda para escribirlo a mano.">Valor total</th>
+              <th class="num calc" title="Automático: tarifa neta × cantidad (× nro. semanas si el tiempo es SEMANA y no es producción). Doble clic en la celda para escribirlo a mano.">Valor total</th>
               <th class="num">Fecha inicio</th>
               <th class="num">Fecha fin</th>
               <th class="estado-col"></th>
@@ -131,7 +131,7 @@
               </td>
               <td :class="claseErr(r, 'tipo_costo')" :title="msgErr(r, 'tipo_costo')">
                 <span v-if="soloLectura" class="txt">{{ r.tipo_costo }}</span>
-                <select v-else v-model="r.tipo_costo">
+                <select v-else v-model="r.tipo_costo" @change="recalcular(r, 'total')">
                   <option :value="null"></option>
                   <option v-for="t in ENUMS.tipo_costo" :key="t" :value="t">{{ t }}</option>
                 </select>
@@ -275,7 +275,7 @@
             </div>
             <div class="campo" :class="{ err: errPanel('tipo_costo') }">
               <label for="p-tipo-costo">Tipo de costo</label>
-              <select id="p-tipo-costo" v-model="borrador.tipo_costo" @blur="tocar('tipo_costo')">
+              <select id="p-tipo-costo" v-model="borrador.tipo_costo" @change="recalcular(borrador, 'total')" @blur="tocar('tipo_costo')">
                 <option :value="null"></option>
                 <option v-for="t in ENUMS.tipo_costo" :key="t" :value="t">{{ t }}</option>
               </select>

@@ -24,10 +24,12 @@ const TIEMPOS_BASE = ['MES', 'SEMANA', 'DIAS'];
 
 // Valor total automático. Con tiempo SEMANA la tarifa es por semana: se multiplica
 // por nro. semanas (vacío cuenta como 0, igual que en el Sheets y en cargar_oasis.py).
-// En cualquier otro caso, tarifa neta × cantidad.
+// Excepción: la producción se cobra una vez, nunca por semana. En cualquier otro
+// caso, tarifa neta × cantidad.
+const porSemana = (r) => r.tiempo === 'SEMANA' && r.tipo_costo !== 'PRODUCCION';
 function formulaValorTotal(r) {
   if (!esNumero(r.tarifa_neta) || !esNumero(r.cantidad)) return null;
-  const semanas = r.tiempo === 'SEMANA' ? (esNumero(r.nro_semanas) ? r.nro_semanas : 0) : 1;
+  const semanas = porSemana(r) ? (esNumero(r.nro_semanas) ? r.nro_semanas : 0) : 1;
   return redondear(r.tarifa_neta * r.cantidad * semanas, 2);
 }
 
@@ -265,7 +267,7 @@ function validar(r, ctx) {
   if (r.nro_semanas !== null) {
     if (!esNumero(r.nro_semanas)) e.nro_semanas = 'No es un número';
     else if (r.nro_semanas < 0) e.nro_semanas = 'No puede ser negativo';
-  } else if (r.tiempo === 'SEMANA' && !r.valor_total_manual) {
+  } else if (porSemana(r) && !r.valor_total_manual) {
     e.nro_semanas = 'Obligatorio con tiempo SEMANA: el valor total lo multiplica';
   }
 
@@ -505,7 +507,7 @@ async function iniciar() {
 
       // Recalcula lo derivado de lo que se acaba de editar. La tarifa neta solo
       // cambia si se edita bruta o descuento; el valor total, solo si es automático
-      // (lo mueven tarifa, cantidad, tiempo y nro. semanas).
+      // (lo mueven tarifa, cantidad, tiempo, nro. semanas y tipo de costo).
       recalcular(r, desde) {
         if (desde === 'neta' && esNumero(r.tarifa_bruta) && esNumero(r.descuento)) {
           r.tarifa_neta = redondear(r.tarifa_bruta * (1 - r.descuento / 100), 2);
@@ -514,7 +516,7 @@ async function iniciar() {
         if (!r.valor_total_manual && f !== null) r.valor_total = f;
       },
       formula(r) { return formulaValorTotal(r); },
-      textoFormula(r) { return r.tiempo === 'SEMANA' ? 'tarifa neta × cantidad × nro. semanas' : 'tarifa neta × cantidad'; },
+      textoFormula(r) { return porSemana(r) ? 'tarifa neta × cantidad × nro. semanas' : 'tarifa neta × cantidad'; },
       pistaFormula(r) {
         const f = this.formula(r);
         return `Valor escrito a mano. Fórmula (${this.textoFormula(r)}): ${f === null ? '—' : fmt.format(f)}`;
