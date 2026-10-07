@@ -1,12 +1,18 @@
-// Login: código de 6 dígitos por correo y, en desarrollo, correo y contraseña.
+// Login: correo y contraseña, y código de 6 dígitos por correo.
 //
 // Se usa código y no enlace porque los escáneres de seguridad del correo
 // corporativo abren los enlaces antes que el usuario y los dejan vencidos.
 // La plantilla de correo de Supabase debe mandar {{ .Token }}, no el enlace.
+//
+// Hoy el código no funciona: las plantillas de Supabase no se pueden editar sin
+// correo propio. Mientras tanto el piloto entra con contraseña y la pestaña del
+// código queda visible con «próximamente». Cuando esté Resend y la plantilla
+// pegada, CODIGO_DISPONIBLE = true: el código pasa a ser el primero y el principal.
 
 const $ = (id) => document.getElementById(id);
 
-const ES_LOCAL = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const CODIGO_DISPONIBLE = false;
+const METODO_PRINCIPAL = CODIGO_DISPONIBLE ? 'codigo' : 'clave';
 const ESPERA_REENVIO = 60; // segundos; Supabase no deja pedir otro código antes
 
 const metodos = $('metodos');
@@ -47,8 +53,9 @@ function elegirMetodo(metodo) {
   for (const b of $('pestanas').querySelectorAll('button')) {
     b.classList.toggle('activa', b.dataset.metodo === metodo);
   }
-  formPedir.hidden = metodo !== 'codigo' || !!correoActual;
-  formCodigo.hidden = metodo !== 'codigo' || !correoActual;
+  formPedir.hidden = metodo !== 'codigo' || !CODIGO_DISPONIBLE || !!correoActual;
+  formCodigo.hidden = metodo !== 'codigo' || !CODIGO_DISPONIBLE || !correoActual;
+  $('codigo-pronto').hidden = metodo !== 'codigo' || CODIGO_DISPONIBLE;
   formClave.hidden = metodo !== 'clave';
   ocultarMensaje();
 }
@@ -196,9 +203,15 @@ $('btn-otro').addEventListener('click', async () => {
   await sb.auth.signOut();
   sinAcceso.hidden = true;
   correoActual = '';
-  elegirMetodo('codigo');
+  elegirMetodo(METODO_PRINCIPAL);
   metodos.hidden = false;
 });
 
-$('pestanas').hidden = !ES_LOCAL;
+// El método principal va primero y abierto. Sin código, su pestaña dice «próximamente».
+const pestanaCodigo = $('pestanas').querySelector('[data-metodo="codigo"]');
+if (!CODIGO_DISPONIBLE) {
+  pestanaCodigo.insertAdjacentHTML('beforeend', ' <span class="pronto">próximamente</span>');
+  $('pestanas').append(pestanaCodigo);
+}
+elegirMetodo(METODO_PRINCIPAL);
 continuar();

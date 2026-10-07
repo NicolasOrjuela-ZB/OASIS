@@ -24,10 +24,17 @@
         <h1 class="titulo">Entrar</h1>
 
         <div id="metodos" hidden>
-          <!-- La contraseña es para desarrollo: la pestaña solo aparece en localhost -->
-          <div class="pestanas" id="pestanas" hidden>
+          <!-- Las dos pestañas siempre visibles. El orden y cuál arranca abierta los
+               decide CODIGO_DISPONIBLE en js/login.js. -->
+          <div class="pestanas" id="pestanas">
             <button type="button" class="activa" data-metodo="codigo">Código por correo</button>
             <button type="button" data-metodo="clave">Contraseña</button>
+          </div>
+
+          <!-- Código mientras no hay correo propio -->
+          <div id="codigo-pronto" class="alerta" hidden>
+            <strong>Próximamente.</strong> Podrás entrar con un código de 6 dígitos que llega a tu correo, sin contraseña.
+            Mientras tanto, entra con la pestaña Contraseña.
           </div>
 
           <!-- Código: paso 1, pedirlo -->
@@ -57,7 +64,7 @@
 
           <!-- Contraseña -->
           <form id="form-clave" data-metodo="clave" hidden>
-            <p class="ayuda">Solo para desarrollo. La cuenta se crea en Supabase con contraseña.</p>
+            <p class="ayuda">Entra con tu correo y la contraseña que te dio el administrador de OASIS.</p>
             <div class="campo">
               <label for="correo-clave">Correo</label>
               <input id="correo-clave" type="email" autocomplete="username" required placeholder="nombre@empresa.com">

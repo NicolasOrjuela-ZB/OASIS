@@ -277,6 +277,17 @@ h1.titulo {
 .pestanas button:first-child { margin-left: 0; }
 .pestanas button.activa { background: var(--k); border-color: var(--k); color: var(--y); }
 .pestanas button:focus-visible { outline: 2px solid var(--y); outline-offset: 1px; }
+.pestanas .pronto {
+  font-family: var(--f-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-left: 4px;
+  color: var(--muted);
+}
+.pestanas button.activa .pronto { color: #A39D8B; }
+.login #codigo-pronto { margin-top: 18px; }
 
 @media (max-width: 760px) {
   .login { grid-template-columns: 1fr; }

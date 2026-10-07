@@ -22,9 +22,9 @@ El objetivo del sistema es saber cuánta plata corresponde a cada material, día
 | Credenciales Postgres | `.env` — nunca al repositorio |
 | Autenticación y RLS | `rls_fase2.sql` — funciones de identidad, políticas, trigger de vínculo |
 | Sistema de diseño | `DISENO.md` — tokens, tipografía, componentes y pantallas de la interfaz |
-| Interfaz interna | `app/` — sitio estático; login con código de 6 dígitos por correo (contraseña solo en localhost). Cuatro pantallas: Compras, Materiales, Inversión, Alertas. Con rol LECTURA, Compras y Materiales se muestran como texto, sin edición |
+| Interfaz interna | `app/` — sitio estático; login con correo y contraseña. El código de 6 dígitos por correo se ve como «próximamente» hasta tener correo propio (ver Login). Cuatro pantallas: Compras, Materiales, Inversión, Alertas. Con rol LECTURA, Compras y Materiales se muestran como texto, sin edición |
 | Sitio publicado | https://nicolasorjuela-zb.github.io/OASIS/ — GitHub Pages publica `app/` en cada push a `main` (`.github/workflows/pages.yml`). Vive en la subcarpeta `/OASIS/`: toda ruta dentro de `app/` debe ser relativa, nunca empezar con `/` |
-| Plantilla de correo de acceso | `supabase/plantilla_codigo.html` — se pega a mano en Supabase → Authentication → Emails (Magic Link y Confirm signup) |
+| Plantilla de correo de acceso | `supabase/plantilla_codigo.html` — se pega a mano en Supabase → Authentication → Emails (Magic Link y Confirm signup). Todavía no se puede: Supabase no deja editar plantillas sin SMTP propio |
 | Código | GitHub `NicolasOrjuela-ZB/OASIS` |
 | Fuente de captura actual | Google Sheets `13Vh45CymNMntNG-EW3NQnglnfyvq39nT7nvediDTV1g` (los equipos siguen llenando ahí hasta que exista la interfaz) |
 
@@ -115,7 +115,15 @@ El script localiza encabezados por nombre, no por posición. Si falta uno, se de
 - No modificar el Google Sheets. La carga es Sheets → Supabase, en una sola dirección.
 - No cambiar las reglas de reparto ni el contrato con BI sin confirmar con Nicolás.
 - Preferir cambios pequeños y verificables. Después de tocar vistas, correr `v_cuadre`.
-- No dar de alta a alguien en un solo paso. Son dos: (1) su fila en `usuarios` con el correo exacto, **antes** de su primer login, para que el trigger complete `auth_user_id`; si entra antes, el vínculo hay que hacerlo a mano. (2) Sus filas en `usuario_mercados`. Un PLANNING o ZB sin mercados entra, ve los catálogos, pero no ve ninguna compra ni material. ADMIN no necesita mercados: ve todos.
+- No dar de alta a alguien en un solo paso. Son dos: (1) su fila en `usuarios` con el correo exacto, **antes** de su primer login, para que el trigger complete `auth_user_id`; si entra antes, el vínculo hay que hacerlo a mano. (2) Sus filas en `usuario_mercados`. Un PLANNING o ZB sin mercados entra, ve los catálogos, pero no ve ninguna compra ni material. ADMIN no necesita mercados: ve todos. **Mientras el login sea con contraseña, hay un tercer paso:** crear la cuenta en Supabase → Authentication → Users → Add user → Create new user, con el mismo correo, una contraseña y «Auto Confirm User» marcado. El trigger hace el vínculo al crearla, así que el paso (1) va antes. La contraseña se le entrega a la persona por un canal privado; si la olvida, un ADMIN la cambia ahí mismo (no hay «olvidé mi contraseña» sin correo propio).
+
+## Login
+
+Dos métodos en `app/index.html`, los dos siempre visibles; el interruptor es `CODIGO_DISPONIBLE` en `app/js/login.js`.
+- **Hoy (`false`):** contraseña es la primera pestaña y la que abre. La pestaña «Código por correo» dice «próximamente» y solo muestra una nota. El piloto entra con contraseña.
+- **Con correo propio (`true`):** se configura SMTP propio en Supabase (Resend), se pega `supabase/plantilla_codigo.html` y se cambia a `true`. El código pasa a ser la primera pestaña y la principal; la contraseña queda como segunda opción.
+
+Se usa código y no enlace porque los escáneres del correo corporativo abren los enlaces antes que el usuario y los dejan vencidos.
 
 ## Estado y pendientes
 
