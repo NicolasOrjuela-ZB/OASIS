@@ -22,6 +22,15 @@
     <!-- Filtros: compartidos por las tres pestañas -->
     <div class="filtros filtros-sueltos filtros-inversion">
       <div class="campo">
+        <label id="et-ver-por">Ver por</label>
+        <div class="pestanas ver-por" role="radiogroup" aria-labelledby="et-ver-por">
+          <button v-for="(t, clave) in VER_POR" :key="clave" type="button" role="radio"
+                  :class="{ activa: verPor === clave }" :aria-checked="verPor === clave"
+                  :title="clave === 'compra' ? 'Todo el valor de cada compra en el mes en que empieza, como el Flow y la facturación' : 'El valor repartido por los días en que corre cada material'"
+                  @click="verPor = clave">{{ t }}</button>
+        </div>
+      </div>
+      <div class="campo">
         <label for="f-mercado">Mercado</label>
         <select id="f-mercado" v-model="filtros.mercado" :disabled="misMercados.length === 1">
           <option v-if="misMercados.length > 1" value="">Todos</option>
@@ -29,7 +38,7 @@
         </select>
       </div>
       <div class="campo">
-        <label for="f-mes">Mes</label>
+        <label for="f-mes">{{ VER_POR[verPor] }}</label>
         <seleccion-multiple id="f-mes" v-model="filtros.meses" :opciones="opcionesMes"></seleccion-multiple>
       </div>
       <div class="campo">
@@ -69,7 +78,7 @@
       <div v-else class="graficos-grilla" @mouseleave="ocultarGlobo">
         <!-- Por mes: columnas -->
         <figure class="grafico">
-          <figcaption>Por mes</figcaption>
+          <figcaption>Por {{ VER_POR[verPor].toLowerCase() }}</figcaption>
           <template v-if="!verTablasGraficos">
             <div class="columnas" role="list">
               <div v-for="g in graficos.meses" :key="g.clave" class="col" role="listitem">
@@ -88,7 +97,7 @@
             </div>
           </template>
           <table v-else class="tabla tabla-grafico">
-            <thead><tr><th>Mes</th><th class="num">Proyectado</th><th class="num">Ejecutado</th><th class="num">Por ejecutar</th></tr></thead>
+            <thead><tr><th>{{ VER_POR[verPor] }}</th><th class="num">Proyectado</th><th class="num">Ejecutado</th><th class="num">Por ejecutar</th></tr></thead>
             <tbody><tr v-for="g in graficos.meses" :key="g.clave">
               <td class="texto">{{ g.etiqueta }}</td><td class="mono num">{{ pesos(g.proy) }}</td>
               <td class="mono num">{{ pesos(g.ejec) }}</td><td class="mono num">{{ pesos(g.proy - g.ejec) }}</td>
@@ -172,7 +181,7 @@
         </div>
       </div>
 
-      <div v-if="pestana === 'total' && filtros.meses.length" class="alerta aviso nota-total">
+      <div v-if="pestana === 'total' && filtros.meses.length && verPor === 'ejecucion'" class="alerta aviso nota-total">
         Total no se parte por mes: muestra el costo completo de cada material que corre en esos meses.
         Para el costo exacto de un mes, usa Semanal o Diaria.
       </div>
