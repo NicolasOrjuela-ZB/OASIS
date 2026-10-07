@@ -25,6 +25,7 @@ const COLUMNAS_INV = {
   costo_proyectado:  ['Costo proyectado', 'pesos'],
   estado:            ['Estado', 'txt'],
   costo_ejecutado:   ['Costo ejecutado', 'pesos'],
+  mes_compra:        ['Mes de compra', 'mes'],
 };
 
 // Columnas en el orden de cada vista. `orden` es único por fila: la paginación
@@ -36,21 +37,21 @@ const PESTANAS = {
     titulo: 'Total', vista: 'v_inversion_total', fn: 'fn_inversion_total',
     columnas: ['site', 'bu', 'proveedor', 'tipo_costo', 'formato', 'valor_total', 'id', 'id_ejecucion',
       'campana', 'sub_campana', 'fecha_inicio', 'fecha_fin', 'dias', 'pct_participacion',
-      'costo_proyectado', 'costo_ejecutado'],
+      'costo_proyectado', 'costo_ejecutado', 'mes_compra'],
     orden: ['site', 'id_ejecucion'],
   },
   semanal: {
     titulo: 'Semanal', vista: 'v_inversion_semanal', fn: 'fn_inversion_semanal',
     columnas: ['site', 'bu', 'year', 'month', 'week', 'proveedor', 'tipo_costo', 'formato', 'valor_total',
       'id', 'id_ejecucion', 'campana', 'sub_campana', 'fecha_inicio', 'fecha_fin', 'dias',
-      'costo_proyectado', 'costo_ejecutado'],
+      'costo_proyectado', 'costo_ejecutado', 'mes_compra'],
     orden: ['site', 'id_ejecucion', 'year', 'month', 'week'],
   },
   diaria: {
     titulo: 'Diaria', vista: 'v_inversion_diaria', fn: 'fn_inversion_diaria',
     columnas: ['site', 'bu', 'year', 'month', 'week', 'date', 'proveedor', 'tipo_costo', 'formato',
       'valor_total', 'id', 'id_ejecucion', 'campana', 'sub_campana', 'pct_participacion',
-      'costo_proyectado', 'estado', 'costo_ejecutado'],
+      'costo_proyectado', 'estado', 'costo_ejecutado', 'mes_compra'],
     orden: ['site', 'id_ejecucion', 'date'],
   },
 };
@@ -66,6 +67,30 @@ function pesosCortos(x) {
 }
 const SIN_SUB_INV = '__sin__';  // opción "Sin sub campaña" del filtro
 const pad2 = (n) => String(n).padStart(2, '0');
+
+// Dos lecturas del mismo dinero (CLAUDE.md, «Mes de ejecución y mes de compra»):
+//   ejecucion  el mes del día en que corre el material (month): el reparto de OASIS.
+//   compra     el mes en que empieza la compra (mes_compra): como el Flow y la facturación.
+const VER_POR = { ejecucion: 'Mes de ejecución', compra: 'Mes de compra' };
+const mesEjecucion = (r) => `${r.year}-${pad2(r.month)}`;
+const mesCompra = (r) => (r.mes_compra || '').slice(0, 7);
+
+// Semanal por mes de compra: la vista parte en dos la semana que cruza de mes
+// (agrupa por month). Con mes de compra ese corte no aplica: se juntan.
+function semanalPorCompra(filas) {
+  const g = new Map();
+  for (const r of filas) {
+    const k = `${r.site}|${r.id_ejecucion}|${r.year}|${r.week}`;
+    const a = g.get(k);
+    if (!a) { g.set(k, { ...r }); continue; }
+    if (r.fecha_inicio < a.fecha_inicio) a.fecha_inicio = r.fecha_inicio;
+    if (r.fecha_fin > a.fecha_fin) a.fecha_fin = r.fecha_fin;
+    a.dias = Number(a.dias) + Number(r.dias);
+    a.costo_proyectado = Number(a.costo_proyectado) + Number(r.costo_proyectado);
+    a.costo_ejecutado = Number(a.costo_ejecutado) + Number(r.costo_ejecutado);
+  }
+  return Object.freeze([...g.values()]);
+}
 
 // Como traerTodo, pero pide las páginas en paralelo: la diaria pasa de 10.000 filas.
 async function traerTodoParalelo(consulta) {
@@ -98,6 +123,10 @@ async function iniciar() {
         diaria:  { filas: [], cargando: true, error: '' },
       },
       pestana: 'total',
+      VER_POR,
+      // Siempre arranca en mes de ejecución, la lectura principal; no se recuerda la
+      // elección. Mes de compra es para conciliar con el Flow o la facturación.
+      verPor: 'ejecucion',                      // 'ejecucion' | 'compra'
       pagina: 0,
       filtros: { mercado: '', meses: [], proveedores: [], tiposCosto: [], subCampanas: [] },
       corte: { valor: null, cargado: false },   // configuracion.fecha_corte; null = hoy
@@ -117,8 +146,18 @@ async function iniciar() {
         return m ? `${m.codigo} · ${m.nombre}` : 'Todos mis mercados';
       },
 
-      actual() { return this.datos[this.pestana]; },
-      columnas() { return PESTANAS[this.pestana].columnas; },
+      actual() {
+        const d = this.datos[this.pestana];
+        if (this.pestana === 'semanal' && this.verPor === 'compra') return { ...d, filas: this.semanalCompra };
+        return d;
+      },
+      semanalCompra() { return semanalPorCompra(this.datos.semanal.filas); },
+      // Semanal por mes de compra ya no se parte por mes de ejecución: sin columna Mes.
+      columnas() {
+        const c = PESTANAS[this.pestana].columnas;
+        return this.pestana === 'semanal' && this.verPor === 'compra' ? c.filter(x => x !== 'month') : c;
+      },
+      claveMes() { return this.verPor === 'compra' ? mesCompra : mesEjecucion; },
 
       // ---- filtros: opciones sacadas de la vista total (tiene todos los materiales fechados)
       filasDelMercado() {
@@ -128,7 +167,8 @@ async function iniciar() {
       opcionesMes() {
         const s = new Set();
         const k = this.codigoFiltro;
-        for (const f of this.datos.semanal.filas) if (!k || f.site === k) s.add(`${f.year}-${pad2(f.month)}`);
+        for (const f of this.datos.semanal.filas) if (!k || f.site === k) s.add(this.claveMes(f));
+        s.delete('');
         return [...s].sort().map(m => {
           const [y, mm] = m.split('-');
           return { valor: m, etiqueta: `${MESES[Number(mm) - 1]} ${y}` };
@@ -166,7 +206,7 @@ async function iniciar() {
             proy: resto.reduce((x, g) => x + g.proy, 0), ejec: resto.reduce((x, g) => x + g.ejec, 0),
           }];
         };
-        const meses = agrupar(r => `${r.year}-${pad2(r.month)}`, k => k).sort((a, b) => a.clave.localeCompare(b.clave));
+        const meses = agrupar(this.claveMes, k => k).filter(g => g.clave).sort((a, b) => a.clave.localeCompare(b.clave));
         meses.forEach((g, i) => {
           const [y, m] = g.clave.split('-');
           g.mes = MESES[Number(m) - 1];
@@ -231,6 +271,11 @@ async function iniciar() {
       },
       filtros: { deep: true, handler() { this.pagina = 0; } },
       pestana() { this.pagina = 0; },
+      verPor() {
+        this.pagina = 0;
+        const meses = new Set(this.opcionesMes.map(o => o.valor));
+        this.filtros.meses = this.filtros.meses.filter(v => meses.has(v));
+      },
     },
 
     methods: {
@@ -247,10 +292,14 @@ async function iniciar() {
           if (tipos.size && !tipos.has(r.tipo_costo)) return false;
           if (subs.size && !subs.has(r.sub_campana || SIN_SUB_INV)) return false;
           if (meses.length) {
-            // Total no tiene mes: entra el material que corre en alguno de esos meses.
-            if (esTotal) {
+            // Por mes de compra el filtro es exacto en todas las pestañas: cada fila
+            // tiene un solo mes de compra. Por mes de ejecución, Total no tiene mes:
+            // entra el material que corre en alguno de esos meses.
+            if (this.verPor === 'compra') {
+              if (!meses.includes(mesCompra(r))) return false;
+            } else if (esTotal) {
               if (!meses.some(m => r.fecha_inicio <= `${m}-31` && r.fecha_fin >= `${m}-01`)) return false;
-            } else if (!meses.includes(`${r.year}-${pad2(r.month)}`)) return false;
+            } else if (!meses.includes(mesEjecucion(r))) return false;
           }
           return true;
         });
@@ -263,7 +312,7 @@ async function iniciar() {
       },
 
       tipo(col) { return COLUMNAS_INV[col][1]; },
-      esNum(col) { return ['ent', 'pesos', 'pct', 'fecha', 'cod'].includes(this.tipo(col)); },
+      esNum(col) { return ['ent', 'pesos', 'pct', 'fecha', 'mes', 'cod'].includes(this.tipo(col)); },
       celda(r, col) {
         const v = r[col];
         if (v === null || v === undefined) return '';
@@ -271,6 +320,7 @@ async function iniciar() {
           case 'pesos': return fmtPesos.format(Number(v));
           case 'pct':   return (Number(v) * 100).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' %';
           case 'fecha': { const [y, m, d] = v.split('-'); return `${d}/${m}/${y}`; }
+          case 'mes':   { const [y, m] = v.split('-'); return `${MESES[Number(m) - 1]} ${y}`; }
           default:      return v;
         }
       },

@@ -53,7 +53,7 @@ Vistas: `v_materiales` (nivel material, con taxonomía), `v_inversion_diaria`, `
 
 **Tramos.** Cuando una campaña cruza dos compras del mismo soporte se parte en un material por compra; los tramos comparten `materiales.grupo_tramo` (uuid, nulo si no está partido). La interfaz crea y parte materiales con `fn_guardar_tramos(material_id, datos, tramos)`: una transacción, con permisos del usuario (RLS aplica), que asigna la siguiente letra libre de cada compra y rechaza tramos fuera del periodo. Mismo soporte = mismo mercado, proveedor, ubicación y tipo de costo. No hay CHECK de periodo en la tabla: el Sheets todavía trae materiales fuera de su compra y la carga no debe fallar.
 
-Cambios de Fase 2 sobre el esquema: `sql/fase2_compras.sql`, `sql/fase2_materiales.sql`, `sql/fase2_alertas.sql`, `sql/fase2_inversion.sql`, `sql/fase2_tiempo.sql`.
+Cambios de Fase 2 sobre el esquema: `sql/fase2_compras.sql`, `sql/fase2_materiales.sql`, `sql/fase2_alertas.sql`, `sql/fase2_inversion.sql`, `sql/fase2_tiempo.sql`, `sql/fase2_mes_compra.sql`.
 
 ## Reglas de negocio — no cambiar sin consultar
 
@@ -67,6 +67,12 @@ Cambios de Fase 2 sobre el esquema: `sql/fase2_compras.sql`, `sql/fase2_material
 
 **Costo proyectado vs ejecutado.** Proyectado es todo el periodo. Ejecutado solo los días hasta `configuracion.fecha_corte` (nula = hoy). Ambos se reportan siempre. Solo un ADMIN cambia la fecha de corte, desde el encabezado de Inversión y con confirmación; el cambio afecta también lo que lee BI.
 
+**Mes de ejecución y mes de compra.** El mismo dinero se puede leer por dos meses distintos, y los dos son correctos:
+- El Flow y la facturación asignan todo el valor de una compra al mes en que empieza. Una campaña del 15 de junio al 15 de julio comprada en junio es «plata de junio».
+- OASIS reparte el valor por día (`v_inversion_diaria`). La misma campaña queda la mitad en junio y la mitad en julio.
+
+Las vistas de inversión traen las dos lecturas: `month` (y `year`, `week`, `date`) es el mes de ejecución; `mes_compra` (primer día del mes de `compras.fecha_inicio`) reproduce la lectura del Flow. Verificación: `SELECT mes_compra, sum(costo_proyectado) FROM v_inversion_diaria GROUP BY 1` coincide, salvo redondeo a centavos, con `sum(valor_total)` de las compras con materiales fechados agrupadas por `date_trunc('month', fecha_inicio)`. La lectura principal es el mes de ejecución; mes de compra es auxiliar, para conciliar (ver Contrato con BI). En Inversión, el selector «Ver por: mes de ejecución / mes de compra» arranca siempre en mes de ejecución y cambia el filtro de mes (exacto en las tres pestañas con mes de compra), los KPIs, el gráfico por mes y la pestaña Semanal (con mes de compra junta las semanas que el cambio de mes partía en dos). Al comparar con el Flow o con una factura, usar mes de compra.
+
 **Las vistas se encadenan.** Semanal y total se agregan desde la diaria. No duplicar lógica.
 
 **Código de material.** `compra.codigo + '-' + letra` donde la letra es la secuencia (1=A). La letra no implica orden cronológico.
@@ -77,7 +83,11 @@ Cambios de Fase 2 sobre el esquema: `sql/fase2_compras.sql`, `sql/fase2_material
 
 ## Contrato con BI
 
-`v_inversion_diaria` es lo que consume BI. Sus 18 columnas y nombres deben mantenerse estables: site, bu, year, month, week, date, proveedor, tipo_costo, formato, valor_total, id (compra), id_ejecucion (material), campana, sub_campana, pct_participacion, costo_proyectado, estado, costo_ejecutado.
+`v_inversion_diaria` es lo que consume BI. Sus 18 columnas originales, con sus nombres y su orden, deben mantenerse estables: site, bu, year, month, week, date, proveedor, tipo_costo, formato, valor_total, id (compra), id_ejecucion (material), campana, sub_campana, pct_participacion, costo_proyectado, estado, costo_ejecutado.
+
+Columnas agregadas después, siempre al final para no mover las anteriores: `mes_compra` (19, `sql/fase2_mes_compra.sql`). `v_inversion_semanal` y `v_inversion_total` también la tienen al final.
+
+**La columna estándar para reportar por mes es `month`** (mes de ejecución, el reparto por día de OASIS). `mes_compra` es auxiliar: sirve para conciliar con el Flow o con la facturación, que asignan todo al mes de inicio de la compra, y no reemplaza a `month` en ningún reporte.
 
 ## Verificación
 
