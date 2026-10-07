@@ -23,6 +23,7 @@ El objetivo del sistema es saber cuánta plata corresponde a cada material, día
 | Autenticación y RLS | `rls_fase2.sql` — funciones de identidad, políticas, trigger de vínculo |
 | Sistema de diseño | `DISENO.md` — tokens, tipografía, componentes y pantallas de la interfaz |
 | Interfaz interna | `app/` — sitio estático; login con código de 6 dígitos por correo (contraseña solo en localhost). Cuatro pantallas: Compras, Materiales, Inversión, Alertas. Con rol LECTURA, Compras y Materiales se muestran como texto, sin edición |
+| Sitio publicado | https://nicolasorjuela-zb.github.io/OASIS/ — GitHub Pages publica `app/` en cada push a `main` (`.github/workflows/pages.yml`). Vive en la subcarpeta `/OASIS/`: toda ruta dentro de `app/` debe ser relativa, nunca empezar con `/` |
 | Plantilla de correo de acceso | `supabase/plantilla_codigo.html` — se pega a mano en Supabase → Authentication → Emails (Magic Link y Confirm signup) |
 | Código | GitHub `NicolasOrjuela-ZB/OASIS` |
 | Fuente de captura actual | Google Sheets `13Vh45CymNMntNG-EW3NQnglnfyvq39nT7nvediDTV1g` (los equipos siguen llenando ahí hasta que exista la interfaz) |
