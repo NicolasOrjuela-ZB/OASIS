@@ -23,10 +23,10 @@ El objetivo del sistema es saber cuánta plata corresponde a cada material, día
 | Autenticación y RLS | `rls_fase2.sql` — funciones de identidad, políticas, trigger de vínculo |
 | Sistema de diseño | `DISENO.md` — tokens, tipografía, componentes y pantallas de la interfaz |
 | Interfaz interna | `app/` — sitio estático; login con correo y contraseña. El código de 6 dígitos por correo se ve como «próximamente» hasta tener correo propio (ver Login). Cuatro pantallas: Compras, Materiales, Inversión, Alertas. Con rol LECTURA, Compras y Materiales se muestran como texto, sin edición |
-| Sitio publicado | https://nicolasorjuela-zb.github.io/OASIS/ — GitHub Pages publica `app/` en cada push a `main` (`.github/workflows/pages.yml`). Vive en la subcarpeta `/OASIS/`: toda ruta dentro de `app/` debe ser relativa, nunca empezar con `/` |
+| Sitio publicado | https://zeta-be.github.io/OASIS/ — GitHub Pages publica `app/` en cada push a `main` (`.github/workflows/pages.yml`). Vive en la subcarpeta `/OASIS/`: toda ruta dentro de `app/` debe ser relativa, nunca empezar con `/` |
 | Plantilla de correo de acceso | `supabase/plantilla_codigo.html` — se pega a mano en Supabase → Authentication → Emails (Magic Link y Confirm signup). Todavía no se puede: Supabase no deja editar plantillas sin SMTP propio |
 | Detector de duplicados | `sql/duplicados.sql` (tabla, RLS, `fn_unificar_duplicado`, `fn_rechazar_duplicado`), Edge Function `supabase/functions/detectar-duplicados/` (el prompt está en `prompt.md`), prueba local `supabase/probar_duplicados.ts`. Ver «Detector de duplicados» |
-| Código | GitHub `NicolasOrjuela-ZB/OASIS` |
+| Código | GitHub `Zeta-Be/OASIS` (https://github.com/Zeta-Be/OASIS) |
 | Fuente de captura actual | Google Sheets `13Vh45CymNMntNG-EW3NQnglnfyvq39nT7nvediDTV1g` (los equipos siguen llenando ahí hasta que exista la interfaz) |
 
 ## Modelo de datos
@@ -123,6 +123,7 @@ El script localiza encabezados por nombre, no por posición. Si falta uno, se de
 ## Qué NO hacer
 
 - **Nunca** hacer commit de `.xlsx`, `.csv`, `.env` ni `credenciales_google.json`. El `.gitignore` los excluye; no lo cambies.
+- **No crear archivos en `supabase/migrations/`** salvo decisión explícita. La integración de Supabase con GitHub aplica automáticamente en producción lo que haya ahí al fusionar a `main`. Nuestras migraciones van en `sql/` y se aplican a mano, con revisión.
 - No modificar el Google Sheets. La carga es Sheets → Supabase, en una sola dirección.
 - No cambiar las reglas de reparto ni el contrato con BI sin confirmar con Nicolás.
 - Preferir cambios pequeños y verificables. Después de tocar vistas, correr `v_cuadre`.
