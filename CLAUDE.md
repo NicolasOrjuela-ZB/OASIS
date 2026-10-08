@@ -25,6 +25,7 @@ El objetivo del sistema es saber cuánta plata corresponde a cada material, día
 | Interfaz interna | `app/` — sitio estático; login con correo y contraseña. El código de 6 dígitos por correo se ve como «próximamente» hasta tener correo propio (ver Login). Cuatro pantallas: Compras, Materiales, Inversión, Alertas. Con rol LECTURA, Compras y Materiales se muestran como texto, sin edición |
 | Sitio publicado | https://nicolasorjuela-zb.github.io/OASIS/ — GitHub Pages publica `app/` en cada push a `main` (`.github/workflows/pages.yml`). Vive en la subcarpeta `/OASIS/`: toda ruta dentro de `app/` debe ser relativa, nunca empezar con `/` |
 | Plantilla de correo de acceso | `supabase/plantilla_codigo.html` — se pega a mano en Supabase → Authentication → Emails (Magic Link y Confirm signup). Todavía no se puede: Supabase no deja editar plantillas sin SMTP propio |
+| Detector de duplicados | `sql/duplicados.sql` (tabla, RLS, `fn_unificar_duplicado`, `fn_rechazar_duplicado`), Edge Function `supabase/functions/detectar-duplicados/` (el prompt está en `prompt.md`), prueba local `supabase/probar_duplicados.ts`. Ver «Detector de duplicados» |
 | Código | GitHub `NicolasOrjuela-ZB/OASIS` |
 | Fuente de captura actual | Google Sheets `13Vh45CymNMntNG-EW3NQnglnfyvq39nT7nvediDTV1g` (los equipos siguen llenando ahí hasta que exista la interfaz) |
 
@@ -55,6 +56,16 @@ Vistas: `v_materiales` (nivel material, con taxonomía), `v_inversion_diaria`, `
 **Tramos.** Cuando una campaña cruza dos compras del mismo soporte se parte en un material por compra; los tramos comparten `materiales.grupo_tramo` (uuid, nulo si no está partido). La interfaz crea y parte materiales con `fn_guardar_tramos(material_id, datos, tramos)`: una transacción, con permisos del usuario (RLS aplica), que asigna la siguiente letra libre de cada compra y rechaza tramos fuera del periodo. Mismo soporte = mismo mercado, proveedor, ubicación y tipo de costo. No hay CHECK de periodo en la tabla: el Sheets todavía trae materiales fuera de su compra y la carga no debe fallar.
 
 Cambios de Fase 2 sobre el esquema: `sql/fase2_compras.sql`, `sql/fase2_materiales.sql`, `sql/fase2_alertas.sql`, `sql/fase2_inversion.sql`, `sql/fase2_tiempo.sql`, `sql/fase2_mes_compra.sql`.
+
+## Detector de duplicados
+
+La IA propone, el humano confirma; nada se unifica sin clic. Card «Posibles duplicados» arriba en Alertas: «Analizar» llama a la Edge Function `detectar-duplicados` dos veces (PROVEEDOR y SOPORTE) para el mercado activo; cada propuesta se unifica o se marca «No son lo mismo». LECTURA ve la lista sin botones.
+
+- **La función** lee con el JWT de quien llama (RLS aplica), manda al modelo (`claude-sonnet-4-6`; se cambia con el secreto `MODELO_DUPLICADOS`) los elementos numerados y recibe números, no textos. Revisa en código lo que no depende del criterio del modelo: dos o más valores, mismo proveedor, misma ciudad (sin tildes) y no repetir un grupo ya unificado o rechazado con los mismos valores. Cada análisis reemplaza las PENDIENTE de ese mercado y tipo.
+- **Unificar soporte** cambia `compras.ubicacion` en las compras exactas de cada valor (mercado, proveedor, ubicación y ciudad). **Unificar proveedor** pasa las compras al proveedor canónico (si el nombre no existe, renombra el del grupo con más compras) y deja los demás con `activo = false`. Primero proveedores, luego soportes: un soporte solo se agrupa dentro de un proveedor.
+- **La carga respeta lo unificado.** `cargar_oasis.py` traduce lo que llega del Sheets con las propuestas UNIFICADO (proveedor → canónico; proveedor, ubicación y ciudad → ubicación canónica) y lo avisa en el reporte. Sin eso, la siguiente carga desharía la unificación.
+- **Desplegar:** `npx supabase functions deploy detectar-duplicados --project-ref tjlteqhqctdtlbppigdi --use-api` (pide `npx supabase login` la primera vez). Secreto: `npx supabase secrets set ANTHROPIC_API_KEY=… --project-ref tjlteqhqctdtlbppigdi`. `supabase/config.toml` apaga `verify_jwt` (la sesión se verifica en la función) y empaca `prompt.md`.
+- **Ajustar el prompt:** editar `prompt.md`, probar con `supabase/probar_duplicados.ts` (mismo código, sin desplegar) y volver a desplegar.
 
 ## Reglas de negocio — no cambiar sin consultar
 

@@ -29,6 +29,60 @@
       </div>
     </div>
 
+    <section v-if="!cargando" class="card duplicados">
+      <div class="card-cab">
+        <h2>Posibles duplicados<span v-if="duplicadosVisibles.length" class="cuenta">{{ duplicadosVisibles.length }}</span></h2>
+        <div v-if="puedeEscribir" class="acciones-cab">
+          <button type="button" class="btn p" :disabled="analizando || !filtros.mercado" @click="analizar"
+                  :title="filtros.mercado ? '' : 'Elige un mercado para analizar'">
+            {{ analizando ? 'Analizando…' : 'Analizar' }}
+          </button>
+        </div>
+      </div>
+      <p class="explica">
+        La IA busca proveedores y soportes escritos de formas distintas. Nada cambia hasta que alguien unifica.
+        Unifica primero los proveedores: un soporte solo se agrupa con otro del mismo proveedor.
+      </p>
+      <div v-if="analizando" class="analizando" role="status">
+        <span class="barra-actividad"></span>
+        Analizando proveedores y soportes de {{ codigoFiltro }}. Suele tardar entre 30 segundos y 2 minutos.
+      </div>
+      <div v-if="dup.mensaje" class="alerta" :class="dup.clase" style="margin:10px 14px 0">{{ dup.mensaje }}</div>
+
+      <ul v-if="duplicadosVisibles.length" class="lista-duplicados">
+        <li v-for="d in duplicadosVisibles" :key="d.id">
+          <div class="dup-cab">
+            <span class="pill" :class="CLASE_CONFIANZA[d.confianza]">{{ d.confianza }}</span>
+            <span class="dup-tipo">{{ d.tipo === 'PROVEEDOR' ? 'Proveedor' : 'Soporte' }}</span>
+            <span v-if="!codigoFiltro" class="mk">{{ codigoMercado(d.mercado_id) }}</span>
+          </div>
+          <ul class="dup-valores">
+            <li v-for="v in d.valores" :key="v.texto + v.proveedor_id + v.ciudad">
+              <span class="valor">{{ v.texto }}</span><span v-if="invisible(v.texto)" class="ojo" title="Este texto tiene un carácter invisible">invisible</span>
+              <span class="meta">{{ detalle(d, v) }}</span>
+            </li>
+          </ul>
+          <p class="razon">{{ d.razon }}</p>
+          <div class="dup-pie">
+            <div class="campo dup-canon">
+              <label :for="'canon-' + d.id">Nombre canónico</label>
+              <input v-if="puedeEscribir" :id="'canon-' + d.id" v-model="d._canonico" :disabled="d._ocupado">
+              <span v-else :id="'canon-' + d.id" class="canon-texto">{{ d.canonico }}</span>
+            </div>
+            <div v-if="puedeEscribir" class="dup-acciones">
+              <button type="button" class="btn p" :disabled="d._ocupado || !d._canonico.trim()" @click="unificar(d)"
+                      :title="`Cambia ${totalCompras(d)} compras`">Unificar</button>
+              <button type="button" class="btn" :disabled="d._ocupado" @click="rechazar(d)">No son lo mismo</button>
+            </div>
+          </div>
+          <div v-if="d._error" class="alerta error" style="margin-top:8px">{{ d._error }}</div>
+        </li>
+      </ul>
+      <div v-else-if="!analizando" class="vacio">
+        Sin propuestas pendientes{{ codigoFiltro ? ' en ' + codigoFiltro : '' }}.{{ puedeEscribir ? ' «Analizar» las busca.' : '' }}
+      </div>
+    </section>
+
     <div v-if="cargando" class="card"><div class="vacio">Cargando alertas…</div></div>
     <div v-else-if="!grupos.length && !errorCarga" class="alerta ok sin-alertas">
       Sin alertas{{ codigoFiltro ? ' en ' + codigoFiltro : '' }}: la captura está completa.

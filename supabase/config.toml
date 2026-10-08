@@ -1,0 +1,10 @@
+# Configuración de la CLI de Supabase para las Edge Functions de OASIS.
+# Solo se usa al desplegar: npx supabase functions deploy <nombre> --project-ref tjlteqhqctdtlbppigdi
+project_id = "tjlteqhqctdtlbppigdi"
+
+[functions.detectar-duplicados]
+# La sesión se verifica dentro de la función (auth.getUser), que funciona con
+# las llaves nuevas de Supabase; la verificación automática del gateway no.
+verify_jwt = false
+# El prompt viaja con la función y se lee en cada llamada.
+static_files = ["./functions/detectar-duplicados/prompt.md"]

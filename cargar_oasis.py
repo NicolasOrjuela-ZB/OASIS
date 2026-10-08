@@ -287,6 +287,53 @@ class Carga:
             sys.exit(f"El mercado {mercado_codigo} no existe en la tabla mercados.")
         # La campaña de toda compra es la campaña OOH del mercado (mercados.campana_ooh_id).
         self.mercado_id, self.campana_ooh_id = fila
+        self.unificaciones()
+
+    # -- unificaciones -----------------------------------------------------
+
+    def unificaciones(self):
+        """Duplicados que alguien unificó en Alertas (sql/duplicados.sql).
+
+        El Sheets sigue trayendo los textos viejos: sin esto, cada carga desharía
+        la unificación. Proveedor: nombre → nombre canónico. Soporte: (proveedor
+        ya traducido, ubicación, ciudad) → ubicación canónica.
+        """
+        self.cur.execute("""
+            SELECT tipo, valores, canonico FROM duplicados_propuestos
+            WHERE mercado_id = %s AND estado = 'UNIFICADO'
+            ORDER BY resuelto_en, id
+        """, (self.mercado_id,))
+        unificados = self.cur.fetchall()
+
+        self.unif_proveedor = {}
+        for tipo, valores, canonico in unificados:
+            if tipo == "PROVEEDOR":
+                for v in valores:
+                    if v["texto"] != canonico:
+                        self.unif_proveedor[v["texto"]] = canonico
+
+        self.unif_soporte = {}
+        for tipo, valores, canonico in unificados:
+            if tipo == "SOPORTE":
+                for v in valores:
+                    prov = self.proveedor_unificado(v["proveedor"])
+                    if v["ubicacion"] != canonico:
+                        self.unif_soporte[(prov, v["ubicacion"], v["ciudad"])] = canonico
+
+    # Siguen la cadena: si A se unificó en B y luego B en C, A termina en C.
+    def proveedor_unificado(self, nombre):
+        vistos = set()
+        while nombre in self.unif_proveedor and nombre not in vistos:
+            vistos.add(nombre)
+            nombre = self.unif_proveedor[nombre]
+        return nombre
+
+    def ubicacion_unificada(self, proveedor, ubicacion, ciudad):
+        vistos = set()
+        while (proveedor, ubicacion, ciudad) in self.unif_soporte and ubicacion not in vistos:
+            vistos.add(ubicacion)
+            ubicacion = self.unif_soporte[(proveedor, ubicacion, ciudad)]
+        return ubicacion
 
     # -- campañas ----------------------------------------------------------
 
@@ -342,7 +389,7 @@ class Carga:
         for r in filas(ws, self.flow_ini, self.FLOW["codigo"]):
             n = texto(ws.cell(row=r, column=self.FLOW["proveedor"]).value)
             if n:
-                nombres.add(n.upper())
+                nombres.add(self.proveedor_unificado(n.upper()))
 
         psycopg2.extras.execute_batch(self.cur, """
             INSERT INTO proveedores (mercado_id, nombre)
@@ -420,17 +467,26 @@ class Carga:
             semanas = (numero(g("nro_semanas")) or 0) if por_semana else 1
             valor_total_manual = abs(valor_total - round(tarifa_neta * cantidad * semanas, 2)) > 1
 
-            prov = (texto(g("proveedor")) or "").upper()
+            prov_sheets = (texto(g("proveedor")) or "").upper()
+            prov = self.proveedor_unificado(prov_sheets)
+            if prov != prov_sheets:
+                self.avisos["proveedor traducido por unificación"].append(f"{codigo}: {prov_sheets} → {prov}")
             proveedor_id = self.mapa_proveedores.get(prov)
             if not proveedor_id:
                 self.avisos["proveedor no encontrado"].append(f"{codigo}: {prov}")
                 continue
 
+            ubicacion_sheets = texto(g("ubicacion"))
+            ubicacion = self.ubicacion_unificada(prov, ubicacion_sheets, texto(g("ciudad")))
+            if ubicacion != ubicacion_sheets:
+                self.avisos["ubicación traducida por unificación"].append(
+                    f"{codigo}: {ubicacion_sheets} → {ubicacion}")
+
             pendientes.append((
                 self.mercado_id, codigo, texto(g("cliente")),
                 campana_id, proveedor_id,
                 texto(g("tipo_compra")), texto(g("medio")), texto(g("tipo_costo")),
-                texto(g("formato")), texto(g("ubicacion")), texto(g("ciudad")),
+                texto(g("formato")), ubicacion, texto(g("ciudad")),
                 numero(g("trafico")), tiempo,
                 numero(g("tarifa_bruta")) or 0, descuento,
                 tarifa_neta, cantidad,
